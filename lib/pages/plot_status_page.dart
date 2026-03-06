@@ -247,7 +247,7 @@ class _PlotStatusPageState extends State<PlotStatusPage> {
   PlotStatusContentTab _activeContentTab = PlotStatusContentTab.site;
   double _tableZoomLevel =
       1.0; // Table zoom level (1.0 = 100%, 0.5 = 50%, 1.2 = 120%, etc.)
-  String _areaUnit = 'Square Feet (sqft)';
+  String _areaUnit = 'Square Meter (sqm)';
   bool get _isSqm => AreaUnitUtils.isSqm(_areaUnit);
   String get _areaUnitSuffix => AreaUnitUtils.unitSuffix(_isSqm);
   bool? _supportsBuyerContactNumberColumn;
@@ -5354,8 +5354,8 @@ class _PlotStatusPageState extends State<PlotStatusPage> {
                                           final optionText =
                                               _getStatusDropdownLabel(
                                                   statusOption);
-                                          final isLastOption =
-                                              index == dropdownOptions.length - 1;
+                                          final isLastOption = index ==
+                                              dropdownOptions.length - 1;
 
                                           return Column(
                                             mainAxisSize: MainAxisSize.min,
@@ -5367,12 +5367,14 @@ class _PlotStatusPageState extends State<PlotStatusPage> {
                                                     print(
                                                         '📝 STATUS CHANGE: ✅✅✅ INKWELL TAPPED! User selected $statusOption');
                                                     // Get fresh references to ensure we're updating the right data
-                                                    final currentLayout = _layouts[
-                                                        _editingLayoutIndex!];
+                                                    final currentLayout =
+                                                        _layouts[
+                                                            _editingLayoutIndex!];
                                                     final currentPlot =
-                                                        currentLayout['plots']
-                                                                [_editingPlotIndex!]
-                                                            as Map<String, dynamic>;
+                                                        currentLayout['plots'][
+                                                                _editingPlotIndex!]
+                                                            as Map<String,
+                                                                dynamic>;
                                                     final plotNumber =
                                                         currentPlot['plotNumber']
                                                                 as String? ??
@@ -5388,12 +5390,14 @@ class _PlotStatusPageState extends State<PlotStatusPage> {
                                                     setState(() {
                                                       print(
                                                           '📝 STATUS CHANGE: Inside setState');
-                                                      _editingStatus = statusOption;
+                                                      _editingStatus =
+                                                          statusOption;
                                                       // Directly update the plot we're editing (fastest way)
                                                       _layouts[_editingLayoutIndex!]
-                                                                  ['plots']
-                                                              [_editingPlotIndex!]
-                                                          ['status'] = statusOption;
+                                                                  ['plots'][
+                                                              _editingPlotIndex!]
+                                                          [
+                                                          'status'] = statusOption;
 
                                                       // First update _allPlots (same as table update)
                                                       for (var plotData
@@ -5415,7 +5419,8 @@ class _PlotStatusPageState extends State<PlotStatusPage> {
                                                       }
 
                                                       // Then update the corresponding plot in _layouts (same as table update) - this ensures all copies are updated
-                                                      for (var layout in _layouts) {
+                                                      for (var layout
+                                                          in _layouts) {
                                                         if ((layout['name']
                                                                     as String? ??
                                                                 '') ==
@@ -5428,14 +5433,16 @@ class _PlotStatusPageState extends State<PlotStatusPage> {
                                                           for (var plotData
                                                               in plots) {
                                                             if (plotData is Map<
-                                                                String, dynamic>) {
+                                                                String,
+                                                                dynamic>) {
                                                               final pn = plotData[
                                                                           'plotNumber']
                                                                       as String? ??
                                                                   '';
                                                               if (pn ==
                                                                   plotNumber) {
-                                                                plotData['status'] =
+                                                                plotData[
+                                                                        'status'] =
                                                                     statusOption;
                                                                 break;
                                                               }
@@ -5445,7 +5452,8 @@ class _PlotStatusPageState extends State<PlotStatusPage> {
                                                         }
                                                       }
 
-                                                      _isStatusDropdownOpen = false;
+                                                      _isStatusDropdownOpen =
+                                                          false;
                                                       print(
                                                           '📝 STATUS CHANGE: Calling sync functions');
                                                       _syncEditingPlotToAllPlots();
@@ -5457,29 +5465,33 @@ class _PlotStatusPageState extends State<PlotStatusPage> {
                                                   child: Container(
                                                     width: double.infinity,
                                                     height: 40,
-                                                    alignment: Alignment.centerLeft,
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                            horizontal: 8),
+                                                    alignment:
+                                                        Alignment.centerLeft,
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 8),
                                                     child: Container(
                                                       width: 152,
                                                       height: 32,
                                                       padding: const EdgeInsets
-                                                          .symmetric(horizontal: 8),
+                                                          .symmetric(
+                                                          horizontal: 8),
                                                       decoration: BoxDecoration(
                                                         color:
                                                             _getStatusDropdownChipBackgroundColor(
                                                                 statusOption),
                                                         borderRadius:
-                                                            BorderRadius.circular(
-                                                                8),
+                                                            BorderRadius
+                                                                .circular(8),
                                                         boxShadow: [
                                                           BoxShadow(
                                                             color: Colors.black
-                                                                .withOpacity(0.25),
+                                                                .withOpacity(
+                                                                    0.25),
                                                             blurRadius: 2,
                                                             offset:
-                                                                const Offset(0, 0),
+                                                                const Offset(
+                                                                    0, 0),
                                                             spreadRadius: 0,
                                                           ),
                                                         ],
@@ -5491,26 +5503,30 @@ class _PlotStatusPageState extends State<PlotStatusPage> {
                                                             height: 16,
                                                             decoration:
                                                                 BoxDecoration(
-                                                              color: optionColor,
-                                                              shape:
-                                                                  BoxShape.circle,
-                                                              border: Border.all(
-                                                                color:
-                                                                    Colors.white,
+                                                              color:
+                                                                  optionColor,
+                                                              shape: BoxShape
+                                                                  .circle,
+                                                              border:
+                                                                  Border.all(
+                                                                color: Colors
+                                                                    .white,
                                                                 width: 1,
                                                               ),
                                                             ),
                                                           ),
-                                                          const SizedBox(width: 8),
+                                                          const SizedBox(
+                                                              width: 8),
                                                           Text(
                                                             optionText,
-                                                            style:
-                                                                GoogleFonts.inter(
+                                                            style: GoogleFonts
+                                                                .inter(
                                                               fontSize: 14,
                                                               fontWeight:
                                                                   FontWeight
                                                                       .normal,
-                                                              color: Colors.black,
+                                                              color:
+                                                                  Colors.black,
                                                               height: 1.2,
                                                             ),
                                                           ),

@@ -21,7 +21,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   static const double _projectBaseUnitDropdownWidth = 186;
-  String _projectBaseUnitArea = AreaUnitService.defaultUnit;
+  String _projectBaseUnitArea = 'Square Meter (sqm)';
   static const List<String> _projectBaseUnitAreaOptions = <String>[
     'Square Feet (sqft)',
     'Square Meter (sqm)',
@@ -83,7 +83,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (projectId != null && projectId.isNotEmpty) {
         await ProjectStorageService.saveProjectData(
           projectId: projectId,
-          projectAreaUnit: _projectBaseUnitArea,
+          projectAreaUnit: 'Square Meter (sqm)',
         );
       }
     } catch (e) {
@@ -691,7 +691,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     Builder(
                       builder: (BuildContext dropdownContext) {
                         return GestureDetector(
-                          onTap: () => _toggleDropdown(dropdownContext),
+                          onTap: null,
                           child: Container(
                             key: _projectBaseUnitDropdownKey,
                             width: _projectBaseUnitDropdownWidth,
@@ -713,20 +713,14 @@ class _SettingsPageState extends State<SettingsPage> {
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 Text(
-                                  _projectBaseUnitArea,
+                                  'Square Meter (sqm)',
                                   style: GoogleFonts.inter(
                                     fontSize: 14,
                                     fontWeight: FontWeight.normal,
                                     color: Colors.black,
                                   ),
                                 ),
-                                // Dropdown arrow
-                                SvgPicture.asset(
-                                  'assets/images/Drrrop_down.svg',
-                                  width: 14,
-                                  height: 7,
-                                  fit: BoxFit.contain,
-                                ),
+                                const SizedBox.shrink(),
                               ],
                             ),
                           ),

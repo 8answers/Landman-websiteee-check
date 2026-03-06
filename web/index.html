@@ -21,6 +21,24 @@
   <meta name="description" content="Landman Website">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, shrink-to-fit=no">
 
+  <script>
+    (function () {
+      var pathname = window.location.pathname || '/';
+      var params = new URLSearchParams(window.location.search || '');
+      var hasCodeCallback = params.has('code') && params.has('state');
+      var hasAuthFlowParams =
+        params.get('auth') === 'google' || hasCodeCallback;
+      var isLandingPath =
+        pathname.indexOf('/website_8answers%20copy%202/') !== -1 ||
+        pathname.indexOf('/website_8answers copy 2/') !== -1;
+
+      if (!hasAuthFlowParams && !isLandingPath &&
+          (pathname === '/' || pathname === '/index.html')) {
+        window.location.replace('/website_8answers%20copy%202/index.html');
+      }
+    })();
+  </script>
+
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">

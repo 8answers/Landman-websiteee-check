@@ -545,14 +545,22 @@ class ProjectStorageService {
         .eq('project_id', projectId);
 
     // Insert new ones
-    final areasToInsert = nonSellableAreas
-        .where((area) => (area['name'] ?? '').trim().isNotEmpty)
-        .map((area) => {
-              'project_id': projectId,
-              'name': area['name']?.trim() ?? '',
-              'area': _parseDecimal(area['area']),
-            })
-        .toList();
+    final areasToInsert = <Map<String, dynamic>>[];
+    for (int index = 0; index < nonSellableAreas.length; index++) {
+      final area = nonSellableAreas[index];
+      final rawName = (area['name'] ?? '').trim();
+      final areaValue = _parseDecimal(area['area']);
+      if (rawName.isEmpty && areaValue <= 0) {
+        continue;
+      }
+      final resolvedName =
+          rawName.isNotEmpty ? rawName : 'Non Sellable Area ${index + 1}';
+      areasToInsert.add({
+        'project_id': projectId,
+        'name': resolvedName,
+        'area': areaValue,
+      });
+    }
 
     if (areasToInsert.isNotEmpty) {
       await _supabase.from('non_sellable_areas').insert(areasToInsert);
@@ -585,14 +593,17 @@ class ProjectStorageService {
     }
 
     final retainedIds = <String>{};
-    final filtered = amenityAreas
-        .where((area) => (area['name'] ?? '').trim().isNotEmpty)
-        .toList();
+    final filtered = amenityAreas.where((area) {
+      final rawName = (area['name'] ?? '').trim();
+      final areaValue = _parseDecimal(area['area']);
+      final allInCostValue = _parseDecimal(area['allInCost']);
+      return rawName.isNotEmpty || areaValue > 0 || allInCostValue > 0;
+    }).toList();
 
     for (int index = 0; index < filtered.length; index++) {
       final area = filtered[index];
-      final name = area['name']?.trim() ?? '';
-      if (name.isEmpty) continue;
+      final rawName = area['name']?.trim() ?? '';
+      final name = rawName.isNotEmpty ? rawName : 'Amenity Area ${index + 1}';
 
       final payload = <String, dynamic>{
         'name': name,

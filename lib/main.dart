@@ -38,12 +38,13 @@ class MyApp extends StatelessWidget {
     if (params['auth'] == 'google') {
       return true;
     }
+    final path = uri.path;
 
-    // OAuth callback params after provider redirect.
-    return params.containsKey('code') ||
-        params.containsKey('error') ||
-        params.containsKey('access_token') ||
-        params.containsKey('refresh_token');
+    // OAuth callback handling is only expected at app root.
+    final isRootPath = path.isEmpty || path == '/' || path == '/index.html';
+    if (!isRootPath) return false;
+
+    return params.containsKey('code') && params.containsKey('state');
   }
 
   @override
@@ -74,7 +75,7 @@ class MyApp extends StatelessWidget {
         ),
       ),
       home: openAuthFlow
-          ? const AuthWrapper(triggerGoogleSignIn: true)
+          ? AuthWrapper(triggerGoogleSignIn: openAuthFlow)
           : const StartupGate(),
     );
   }

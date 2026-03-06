@@ -381,8 +381,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
   bool _showStickySiteLayoutsToolbar = false;
 
   // Area unit dropdown state
-  String _selectedAreaUnit = 'Square Feet (sqft)';
-  String _baseAreaUnit = 'Square Feet (sqft)';
+  String _selectedAreaUnit = 'Square Meter (sqm)';
+  String _baseAreaUnit = 'Square Meter (sqm)';
   bool _isAmenityAreaExpanded = false;
   bool _isNonSellableAreaExpanded = false;
   bool _isAmenityLayoutCollapsed = false;
@@ -1218,10 +1218,15 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
             .replaceAll(',', '')
             .replaceAll(' ', '')) ??
         0;
+    final approvedSellingAreaDisplay = double.tryParse(_sellingAreaController
+            .text
+            .replaceAll(',', '')
+            .replaceAll(' ', '')) ??
+        0;
     return totalArea -
         _totalNonSellableArea -
         _totalAmenityArea -
-        _approvedSellingArea;
+        approvedSellingAreaDisplay;
   }
 
   bool get _isApprovedSellingAreaExceedingTotalArea {
@@ -7730,9 +7735,12 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
             AreaUnitUtils.areaFromDisplayToSqft(areaDisplay, _isSqm);
         print(
             'Non-sellable area $i: name="$name", area display=$areaDisplay -> sqft=$areaSqft');
-        if (name.isNotEmpty) {
-          nonSellableAreasData
-              .add({'name': name, 'area': _formatAreaDecimal(areaSqft)});
+        final hasInput = name.isNotEmpty || areaDisplay > 0;
+        if (hasInput) {
+          final resolvedName =
+              name.isNotEmpty ? name : 'Non Sellable Area ${i + 1}';
+          nonSellableAreasData.add(
+              {'name': resolvedName, 'area': _formatAreaDecimal(areaSqft)});
         }
       }
       print('Prepared ${nonSellableAreasData.length} non-sellable areas');
@@ -7784,9 +7792,11 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         if (!hasMeaningfulInput) {
           continue;
         }
+        final resolvedAmenityName =
+            name.isNotEmpty ? name : 'Amenity Area ${i + 1}';
         amenityAreasData.add({
           'id': (_amenityAreas[i]['id'] ?? '').trim(),
-          'name': name,
+          'name': resolvedAmenityName,
           'area': _formatAreaDecimal(areaSqft),
           'allInCost': _formatAmountDisplay(allInCostPerSqft, decimalPlaces: 2),
         });

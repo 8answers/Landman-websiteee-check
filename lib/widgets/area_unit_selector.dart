@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import '../utils/area_unit_utils.dart';
 
-const List<String> _areaUnitOptions = [
+const List<String> _allAreaUnitOptions = [
   'Square Feet (sqft)',
   'Square Meter (sqm)'
 ];
@@ -10,6 +10,31 @@ const double _areaUnitDropdownWidth = 180;
 const double _areaUnitMenuWidth = 180;
 const double _areaUnitTriggerHeight = 28;
 const double _areaUnitMenuItemHeight = 24;
+
+class AreaUnitDisplay extends StatelessWidget {
+  final String unitLabel;
+
+  const AreaUnitDisplay({
+    super.key,
+    this.unitLabel = 'Square Meter (sqm)',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 40,
+      alignment: Alignment.centerLeft,
+      child: Text(
+        'Project Area Unit: Square Meter (sqm)',
+        style: GoogleFonts.inter(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: Colors.black,
+        ),
+      ),
+    );
+  }
+}
 
 class AreaUnitSelector extends StatefulWidget {
   final String selectedUnit;
@@ -32,15 +57,12 @@ class _AreaUnitSelectorState extends State<AreaUnitSelector> {
   OverlayEntry? _dropdownEntry;
   OverlayEntry? _backdropEntry;
 
+  List<String> get _visibleAreaUnitOptions => _allAreaUnitOptions
+      .where((option) => option == 'Square Meter (sqm)')
+      .toList();
+
   String _canonicalUnitLabel(String unit) {
-    final normalized = unit.trim().toLowerCase();
-    if (normalized.startsWith('square meter')) {
-      return 'Square Meter (sqm)';
-    }
-    if (normalized.startsWith('square feet')) {
-      return 'Square Feet (sqft)';
-    }
-    return unit;
+    return 'Square Meter (sqm)';
   }
 
   void _closeDropdown() {
@@ -73,8 +95,8 @@ class _AreaUnitSelectorState extends State<AreaUnitSelector> {
     final top = bottomLeft.dy + 8;
     const double menuPadding = 4;
     final menuHeight = (menuPadding * 2) +
-        (_areaUnitOptions.length * _areaUnitMenuItemHeight) +
-        ((_areaUnitOptions.length - 1) * 8);
+        (_visibleAreaUnitOptions.length * _areaUnitMenuItemHeight) +
+        ((_visibleAreaUnitOptions.length - 1) * 8);
 
     _backdropEntry = OverlayEntry(
       builder: (context) => Positioned.fill(
@@ -111,7 +133,8 @@ class _AreaUnitSelectorState extends State<AreaUnitSelector> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: _areaUnitOptions.asMap().entries.expand((entry) {
+                children:
+                    _visibleAreaUnitOptions.asMap().entries.expand((entry) {
                   final isFirst = entry.key == 0;
                   final option = entry.value;
                   final isSelected = option == selectedUnit;
@@ -212,54 +235,37 @@ class _AreaUnitSelectorState extends State<AreaUnitSelector> {
             ),
           ),
           const SizedBox(width: 6),
-          GestureDetector(
-            onTap: () => _showDropdown(context),
-            child: Container(
-              key: _triggerKey,
-              width: _areaUnitDropdownWidth,
-              height: _areaUnitTriggerHeight,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.25),
-                    blurRadius: 2,
-                    offset: const Offset(0, 0),
-                    spreadRadius: 0,
+          Container(
+            key: _triggerKey,
+            width: _areaUnitDropdownWidth,
+            height: _areaUnitTriggerHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.25),
+                  blurRadius: 2,
+                  offset: const Offset(0, 0),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  selectedUnit,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.normal,
+                    color: Colors.black,
                   ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        selectedUnit,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.normal,
-                          color: Colors.black,
-                        ),
-                        maxLines: 1,
-                      ),
-                    ),
-                  ),
-                  SvgPicture.asset(
-                    'assets/images/Drrrop_down.svg',
-                    width: 7,
-                    height: 7,
-                    fit: BoxFit.contain,
-                    colorFilter: const ColorFilter.mode(
-                      Color(0xFF000000),
-                      BlendMode.srcIn,
-                    ),
-                  ),
-                ],
+                  maxLines: 1,
+                ),
               ),
             ),
           ),
