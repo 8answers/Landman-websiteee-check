@@ -32,6 +32,8 @@ class AccountSettingsScreen extends StatefulWidget {
 
 class _AccountSettingsScreenState extends State<AccountSettingsScreen>
     with WidgetsBindingObserver {
+  static const String _accountErrorsPrefKey = 'nav_has_account_errors';
+
   NavigationPage _currentPage = NavigationPage.recentProjects;
   NavigationPage? _previousPage;
   final List<NavigationPage> _pageHistory = <NavigationPage>[];
@@ -123,6 +125,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
     final prevPageName = prefs.getString('nav_previous_page');
     final projectId = prefs.getString('nav_project_id');
     final projectName = prefs.getString('nav_project_name');
+    final hasAccountErrors = prefs.getBool(_accountErrorsPrefKey) ?? false;
 
     final shouldForceRecent = forceRecentOnNextOpen || !isReload;
 
@@ -136,9 +139,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
         _previousPage = null;
         _projectId = projectId;
         _projectName = projectName;
+        _hasAccountErrors = hasAccountErrors;
         _isRestoringNavState = false;
       });
       _initializeHistory(NavigationPage.recentProjects);
+      _refreshAccountErrorBadgeFromStoredData();
       return;
     }
 
@@ -161,10 +166,12 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
           _previousPage = prevPage;
           _projectId = projectId;
           _projectName = projectName;
+          _hasAccountErrors = hasAccountErrors;
           _isRestoringNavState = false;
         });
         _initializeHistory(page);
         _refreshErrorBadgesFromStoredData();
+        _refreshAccountErrorBadgeFromStoredData();
         return;
       }
     }
@@ -174,9 +181,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
       _previousPage = null;
       _projectId = projectId;
       _projectName = projectName;
+      _hasAccountErrors = hasAccountErrors;
       _isRestoringNavState = false;
     });
     _initializeHistory(NavigationPage.recentProjects);
+    _refreshAccountErrorBadgeFromStoredData();
   }
 
   Future<void> _persistNavState() async {
@@ -205,6 +214,42 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
     await prefs.remove('nav_previous_page');
     await prefs.remove('nav_project_id');
     await prefs.remove('nav_project_name');
+    await prefs.remove(_accountErrorsPrefKey);
+  }
+
+  Future<void> _persistAccountErrorsState(bool hasErrors) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_accountErrorsPrefKey, hasErrors);
+  }
+
+  Future<void> _refreshAccountErrorBadgeFromStoredData() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null || userId.trim().isEmpty) return;
+
+    try {
+      final row = await Supabase.instance.client
+          .from('account_report_identity_settings')
+          .select(
+              'full_name, organization, role, logo_storage_path, logo_svg, logo_base64')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      final hasErrors = row == null
+          ? true
+          : (row['full_name'] ?? '').toString().trim().isEmpty ||
+              (row['organization'] ?? '').toString().trim().isEmpty ||
+              (row['role'] ?? '').toString().trim().isEmpty ||
+              (((row['logo_storage_path'] ?? '').toString().trim().isEmpty) &&
+                  ((row['logo_svg'] ?? '').toString().trim().isEmpty) &&
+                  ((row['logo_base64'] ?? '').toString().trim().isEmpty));
+
+      _setStateSafely(() {
+        _hasAccountErrors = hasErrors;
+      });
+      _persistAccountErrorsState(hasErrors);
+    } catch (e) {
+      print('Error refreshing account sidebar error badge: $e');
+    }
   }
 
   bool _isMissingNumeric(dynamic value) {
@@ -790,6 +835,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
     _setStateSafely(() {
       _hasAccountErrors = hasErrors;
     });
+    _persistAccountErrorsState(hasErrors);
   }
 
   void _handlePlotStatusErrorsChanged(bool hasErrors) {
@@ -875,6 +921,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
       _recordPageVisit(_currentPage);
       _persistNavState();
       _refreshErrorBadgesFromStoredData();
+      _refreshAccountErrorBadgeFromStoredData();
     } else {
       // Track previous page when navigating to project details context pages
       if (page == NavigationPage.projectDetails ||
@@ -906,6 +953,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
       }
       _persistNavState();
       _refreshErrorBadgesFromStoredData();
+      _refreshAccountErrorBadgeFromStoredData();
     }
   }
 

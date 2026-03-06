@@ -218,6 +218,8 @@ class _DashboardPageState extends State<DashboardPage> {
   final Set<int> _collapsedCompensationLayouts = {};
   double _compensationTableZoomLevel = 1.0;
   String _selectedCompensationLayoutFilter = 'All';
+  final GlobalKey _siteFilterButtonKey = GlobalKey();
+  final GlobalKey _amenityFilterButtonKey = GlobalKey();
 
   String get _perAreaFeeLabel => AreaUnitUtils.perAreaFeeLabel(_isSqm);
 
@@ -2818,12 +2820,20 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF5C5C5C),
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF5C5C5C),
+                ),
+                softWrap: false,
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -3612,12 +3622,14 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                       Padding(
                         padding: const EdgeInsets.only(top: 24),
                         child: Column(
@@ -3759,63 +3771,64 @@ class _DashboardPageState extends State<DashboardPage> {
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(width: 11),
-                  SizedBox(
-                    width: 405,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 192,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildLegendItem(
-                                color: const Color(0xFF76CF68),
-                                label: 'Net Profit',
-                                value: netProfit,
-                              ),
-                              const SizedBox(height: 40),
-                              _buildLegendItem(
-                                color: const Color(0xFFE1A157),
-                                label: 'Compensation',
-                                value: totalCompensation,
-                              ),
-                              const SizedBox(height: 40),
-                              _buildLegendItem(
-                                color: const Color(0xFF0C8CE9),
-                                label: 'Total Sales Value',
-                                value: totalSalesValue,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 21),
-                        SizedBox(
-                          width: 192,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildLegendItem(
-                                color: const Color(0xFF7CD7EC),
-                                label: 'Gross Profit',
-                                value: grossProfit,
-                              ),
-                              const SizedBox(height: 40),
-                              _buildLegendItem(
-                                color: const Color(0xFFFB7D7D),
-                                label: 'Total Expenses',
-                                value: totalExpenses,
-                              ),
-                            ],
-                          ),
-                        ),
                       ],
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 11),
+                    SizedBox(
+                      width: 405,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 192,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildLegendItem(
+                                  color: const Color(0xFF76CF68),
+                                  label: 'Net Profit',
+                                  value: netProfit,
+                                ),
+                                const SizedBox(height: 40),
+                                _buildLegendItem(
+                                  color: const Color(0xFFE1A157),
+                                  label: 'Compensation',
+                                  value: totalCompensation,
+                                ),
+                                const SizedBox(height: 40),
+                                _buildLegendItem(
+                                  color: const Color(0xFF0C8CE9),
+                                  label: 'Total Sales Value',
+                                  value: totalSalesValue,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 21),
+                          SizedBox(
+                            width: 192,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildLegendItem(
+                                  color: const Color(0xFF7CD7EC),
+                                  label: 'Gross Profit',
+                                  value: grossProfit,
+                                ),
+                                const SizedBox(height: 40),
+                                _buildLegendItem(
+                                  color: const Color(0xFFFB7D7D),
+                                  label: 'Total Expenses',
+                                  value: totalExpenses,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -7863,6 +7876,280 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  void _showDashboardFilterDropdown({
+    required BuildContext context,
+    required GlobalKey buttonKey,
+    required String selectedValue,
+    required int totalCount,
+    required int pendingCount,
+    required int availableCount,
+    required int soldCount,
+    required String allLabel,
+    required String pendingLabel,
+    required String availableLabel,
+    required String soldLabel,
+    required ValueChanged<String> onSelected,
+  }) {
+    final RenderBox? buttonRenderBox =
+        buttonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (buttonRenderBox == null) return;
+
+    final buttonOffset = buttonRenderBox.localToGlobal(Offset.zero);
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    const popupWidth = 149.6;
+    var popupLeft = buttonOffset.dx;
+    if (popupLeft + popupWidth > screenWidth - 16) {
+      popupLeft = screenWidth - popupWidth - 16;
+    }
+    if (popupLeft < 16) {
+      popupLeft = 16;
+    }
+    final popupTop = buttonOffset.dy + buttonRenderBox.size.height + 4;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (BuildContext dialogContext) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.of(dialogContext).pop(),
+                child: Container(),
+              ),
+            ),
+            Positioned(
+              top: popupTop,
+              left: popupLeft,
+              child: Material(
+                type: MaterialType.transparency,
+                child: Container(
+                  width: popupWidth,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8F9FA),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x80000000),
+                        blurRadius: 2,
+                        offset: Offset(0, 0),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildDashboardFilterOption(
+                        label: '$pendingLabel ($pendingCount)',
+                        color: const Color(0xFFFEB12A),
+                        isSelected: selectedValue == 'Pending',
+                        onTap: () {
+                          onSelected('Pending');
+                          Navigator.of(dialogContext).pop();
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _buildDashboardFilterOption(
+                        label: '$availableLabel ($availableCount)',
+                        color: const Color(0xFF4CAF50),
+                        isSelected: selectedValue == 'Available',
+                        onTap: () {
+                          onSelected('Available');
+                          Navigator.of(dialogContext).pop();
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _buildDashboardFilterOption(
+                        label: '$soldLabel ($soldCount)',
+                        color: const Color(0xFFF44336),
+                        isSelected: selectedValue == 'Sold out',
+                        onTap: () {
+                          onSelected('Sold out');
+                          Navigator.of(dialogContext).pop();
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _buildDashboardFilterOption(
+                        label: '$allLabel ($totalCount)',
+                        color: const Color(0xFF0C8CE9),
+                        isSelected: selectedValue == 'All',
+                        onTap: () {
+                          onSelected('All');
+                          Navigator.of(dialogContext).pop();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showSiteLayoutsFilterDropdown(BuildContext context) {
+    int totalPlots = 0;
+    int pendingPlots = 0;
+    int availablePlots = 0;
+    int soldPlots = 0;
+
+    for (final layout in _siteLayouts) {
+      final plots = layout['plots'] as List<dynamic>? ?? const [];
+      for (final plot in plots) {
+        totalPlots++;
+        final status =
+            (plot['status'] as String? ?? 'available').trim().toLowerCase();
+        if (status == 'sold') {
+          soldPlots++;
+        } else if (status == 'pending' || status == 'reserved') {
+          pendingPlots++;
+        } else {
+          availablePlots++;
+        }
+      }
+    }
+
+    _showDashboardFilterDropdown(
+      context: context,
+      buttonKey: _siteFilterButtonKey,
+      selectedValue: _selectedLayoutFilter,
+      totalCount: totalPlots,
+      pendingCount: pendingPlots,
+      availableCount: availablePlots,
+      soldCount: soldPlots,
+      allLabel: 'All',
+      pendingLabel: 'Pending',
+      availableLabel: 'Available',
+      soldLabel: 'Sold',
+      onSelected: (value) {
+        setState(() {
+          _selectedLayoutFilter = value;
+        });
+      },
+    );
+  }
+
+  void _showAmenityFilterDropdown(BuildContext context) {
+    final allRows = _amenityAreaRows.where((row) {
+      final name = (row['name'] ?? '').toString().trim();
+      final area = _amenityAreaSqft(row);
+      final allInCost = _amenityAllInCostSqft(row);
+      return name.isNotEmpty || area > 0 || allInCost > 0;
+    }).toList();
+
+    final totalAreas = allRows.length;
+    final soldAreas = allRows
+        .where((row) => _normalizeAmenityStatus(row['status']) == 'sold')
+        .length;
+    final pendingAreas = allRows
+        .where((row) => _normalizeAmenityStatus(row['status']) == 'pending')
+        .length;
+    final availableAreas = math.max(0, totalAreas - soldAreas - pendingAreas);
+
+    _showDashboardFilterDropdown(
+      context: context,
+      buttonKey: _amenityFilterButtonKey,
+      selectedValue: _selectedAmenityFilter,
+      totalCount: totalAreas,
+      pendingCount: pendingAreas,
+      availableCount: availableAreas,
+      soldCount: soldAreas,
+      allLabel: 'All',
+      pendingLabel: 'Pending',
+      availableLabel: 'Available',
+      soldLabel: 'Sold',
+      onSelected: (value) {
+        setState(() {
+          _selectedAmenityFilter = value;
+        });
+      },
+    );
+  }
+
+  Widget _buildDashboardFilterOption({
+    required String label,
+    required Color color,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    final bool isSold = color.value == const Color(0xFFF44336).value;
+    final bool isAvailable = color.value == const Color(0xFF4CAF50).value;
+    final bool isPending = color.value == const Color(0xFFFEB12A).value;
+    final bool isAll = color.value == const Color(0xFF0C8CE9).value;
+
+    final Color backgroundColor = isSelected
+        ? (isPending
+            ? const Color(0xFFFAE8C8)
+            : isSold
+                ? const Color(0xFFF9E5E6)
+                : isAvailable
+                    ? const Color(0xFFD1EDD2)
+                    : const Color(0xFFEFF5F9))
+        : Colors.white;
+
+    final List<BoxShadow> optionShadow = isSelected
+        ? [
+            BoxShadow(
+              color: isAll ? const Color(0xFF0C8CE9) : const Color(0x40000000),
+              blurRadius: 2,
+              offset: const Offset(0, 0),
+            ),
+          ]
+        : const [
+            BoxShadow(
+              color: Color(0x40000000),
+              blurRadius: 2,
+              offset: Offset(0, 0),
+            ),
+          ];
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 28,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: optionShadow,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Transform.translate(
+                offset: const Offset(0, 0),
+                child: Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLayoutsToolbar() {
     const filterIconAsset = 'assets/images/Filter.svg';
     const expandIconAsset = 'assets/images/Expand.svg';
@@ -7883,40 +8170,20 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         Row(
           children: [
-            PopupMenuButton<String>(
-              initialValue: _selectedLayoutFilter,
-              onSelected: (value) {
-                setState(() {
-                  _selectedLayoutFilter = value;
-                });
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'All',
-                  child: Text('All layouts'),
-                ),
-                PopupMenuItem(
-                  value: 'Available',
-                  child: Text('Available layouts'),
-                ),
-                PopupMenuItem(
-                  value: 'Sold out',
-                  child: Text('Sold out layouts'),
-                ),
-              ],
-              child: _buildLayoutsActionButton(
-                label: 'Filter',
-                leading: SvgPicture.asset(
-                  filterIconAsset,
+            _buildLayoutsActionButton(
+              buttonKey: _siteFilterButtonKey,
+              label: 'Filter',
+              leading: SvgPicture.asset(
+                filterIconAsset,
+                width: 16,
+                height: 10,
+                fit: BoxFit.contain,
+                placeholderBuilder: (context) => const SizedBox(
                   width: 16,
                   height: 10,
-                  fit: BoxFit.contain,
-                  placeholderBuilder: (context) => const SizedBox(
-                    width: 16,
-                    height: 10,
-                  ),
                 ),
               ),
+              onTap: () => _showSiteLayoutsFilterDropdown(context),
             ),
             const SizedBox(width: 24),
             _buildLayoutsActionButton(
@@ -8154,6 +8421,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildLayoutsActionButton({
+    Key? buttonKey,
     required String label,
     Widget? leading,
     Widget? trailing,
@@ -8162,6 +8430,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        key: buttonKey,
         height: 36,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
@@ -8303,13 +8572,21 @@ class _DashboardPageState extends State<DashboardPage> {
       final status = (plot['status'] as String? ?? 'available').toLowerCase();
       return status == 'sold';
     }).length;
+    final pendingPlots = plots.where((plot) {
+      final status = (plot['status'] as String? ?? 'available').toLowerCase();
+      return status == 'pending' || status == 'reserved';
+    }).length;
 
     if (_selectedLayoutFilter == 'Sold out') {
       return soldPlots == totalPlots;
     }
 
+    if (_selectedLayoutFilter == 'Pending') {
+      return soldPlots < totalPlots && pendingPlots > 0;
+    }
+
     if (_selectedLayoutFilter == 'Available') {
-      return soldPlots < totalPlots;
+      return soldPlots < totalPlots && pendingPlots == 0;
     }
 
     return true;
@@ -8660,8 +8937,9 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _amenityRowMatchesFilter(Map<String, dynamic> row) {
     if (_selectedAmenityFilter == 'All') return true;
     final status = _normalizeAmenityStatus(row['status']);
+    if (_selectedAmenityFilter == 'Pending') return status == 'pending';
     if (_selectedAmenityFilter == 'Sold out') return status == 'sold';
-    if (_selectedAmenityFilter == 'Available') return status != 'sold';
+    if (_selectedAmenityFilter == 'Available') return status == 'available';
     return true;
   }
 
@@ -8901,12 +9179,8 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                   const SizedBox(width: 12),
                   _buildAmenityMetricCard(
-                    width: 156,
+                    width: 200,
                     title: 'Available Amenity Plot',
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 5,
-                    ),
                     valueWidget: Text(
                       availablePlots.toString(),
                       style: GoogleFonts.inter(
@@ -9136,11 +9410,14 @@ class _DashboardPageState extends State<DashboardPage> {
     final scaledHeight = (baseHeight * _tableZoomLevel)
         .clamp(baseHeaderHeight * _tableZoomLevel, double.infinity);
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SizedBox(
-        width: 1140,
-        child: Container(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewportWidth =
+            constraints.maxWidth.isFinite ? constraints.maxWidth : tableBaseWidth;
+        final tableViewportMinWidth = math.max(0.0, viewportWidth - 16.0);
+
+        return Container(
+          width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: const Color(0xFFF8F9FA),
@@ -9159,7 +9436,7 @@ class _DashboardPageState extends State<DashboardPage> {
               Text(
                 'Agent',
                 style: GoogleFonts.inter(
-                  fontSize: 32 > 20 ? 32 - 12 : 20,
+                  fontSize: 20,
                   fontWeight: FontWeight.w600,
                   color: Colors.black,
                 ),
@@ -9185,37 +9462,41 @@ class _DashboardPageState extends State<DashboardPage> {
                   child: SingleChildScrollView(
                     controller: _amenityAgentTableScrollController,
                     scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      height: scaledHeight,
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                          left:
-                              ((_tableZoomLevel - 1.0) * 10.0).clamp(0.0, 10.0),
-                          right: ((_tableZoomLevel - 1.0) * 10.0)
-                                  .clamp(0.0, 10.0) +
-                              ((_tableZoomLevel - 1.0) * tableBaseWidth)
-                                  .clamp(0.0, tableBaseWidth),
-                          top:
-                              ((_tableZoomLevel - 1.0) * 10.0).clamp(0.0, 10.0),
-                          bottom: ((_tableZoomLevel - 1.0) * 10.0)
-                                  .clamp(0.0, 10.0) +
-                              ((_tableZoomLevel - 1.0) * 100.0)
-                                  .clamp(0.0, 100.0),
-                        ),
-                        child: Transform.scale(
-                          scale: _tableZoomLevel,
-                          alignment: Alignment.topLeft,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.black,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: const EdgeInsets.all(1),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(7),
-                              child: Container(
-                                color: Colors.white,
-                                child: _buildAmenityAgentTable(rows),
+                    child: ConstrainedBox(
+                      constraints:
+                          BoxConstraints(minWidth: tableViewportMinWidth),
+                      child: SizedBox(
+                        height: scaledHeight,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            left:
+                                ((_tableZoomLevel - 1.0) * 10.0).clamp(0.0, 10.0),
+                            right: ((_tableZoomLevel - 1.0) * 10.0)
+                                    .clamp(0.0, 10.0) +
+                                ((_tableZoomLevel - 1.0) * tableBaseWidth)
+                                    .clamp(0.0, tableBaseWidth),
+                            top:
+                                ((_tableZoomLevel - 1.0) * 10.0).clamp(0.0, 10.0),
+                            bottom: ((_tableZoomLevel - 1.0) * 10.0)
+                                    .clamp(0.0, 10.0) +
+                                ((_tableZoomLevel - 1.0) * 100.0)
+                                    .clamp(0.0, 100.0),
+                          ),
+                          child: Transform.scale(
+                            scale: _tableZoomLevel,
+                            alignment: Alignment.topLeft,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: const EdgeInsets.all(1),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(7),
+                                child: Container(
+                                  color: Colors.white,
+                                  child: _buildAmenityAgentTable(rows),
+                                ),
                               ),
                             ),
                           ),
@@ -9227,8 +9508,8 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -9397,40 +9678,20 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         Row(
           children: [
-            PopupMenuButton<String>(
-              initialValue: _selectedAmenityFilter,
-              onSelected: (value) {
-                setState(() {
-                  _selectedAmenityFilter = value;
-                });
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'All',
-                  child: Text('All'),
-                ),
-                PopupMenuItem(
-                  value: 'Available',
-                  child: Text('Available'),
-                ),
-                PopupMenuItem(
-                  value: 'Sold out',
-                  child: Text('Sold'),
-                ),
-              ],
-              child: _buildLayoutsActionButton(
-                label: 'Filter',
-                leading: SvgPicture.asset(
-                  filterIconAsset,
+            _buildLayoutsActionButton(
+              buttonKey: _amenityFilterButtonKey,
+              label: 'Filter',
+              leading: SvgPicture.asset(
+                filterIconAsset,
+                width: 16,
+                height: 10,
+                fit: BoxFit.contain,
+                placeholderBuilder: (context) => const SizedBox(
                   width: 16,
                   height: 10,
-                  fit: BoxFit.contain,
-                  placeholderBuilder: (context) => const SizedBox(
-                    width: 16,
-                    height: 10,
-                  ),
                 ),
               ),
+              onTap: () => _showAmenityFilterDropdown(context),
             ),
             const SizedBox(width: 16),
             _buildLayoutsActionButton(
@@ -9877,6 +10138,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     if (_partners.isEmpty) {
       return Container(
+        width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: const Color(0xFFF8F9FA),
@@ -9924,6 +10186,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFFF8F9FA),
@@ -10056,20 +10319,24 @@ class _DashboardPageState extends State<DashboardPage> {
     }).toList();
 
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Scrollbar(
-        controller: _partnersTableScrollController,
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          controller: _partnersTableScrollController,
-          scrollDirection: Axis.horizontal,
-          child: IntrinsicWidth(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Scrollbar(
+            controller: _partnersTableScrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _partnersTableScrollController,
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 // Sl. No. column
                 Column(
                   children: [
@@ -10179,10 +10446,12 @@ class _DashboardPageState extends State<DashboardPage> {
                     }),
                   ],
                 ),
-              ],
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -10779,6 +11048,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     if (_projectManagers.isEmpty) {
       return Container(
+        width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: const Color(0xFFF8F9FA),
@@ -10832,6 +11102,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFFF8F9FA),
@@ -10910,20 +11181,24 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildProjectManagersTable(List<Map<String, dynamic>> managers) {
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Scrollbar(
-        controller: _projectManagersTableScrollController,
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          controller: _projectManagersTableScrollController,
-          scrollDirection: Axis.horizontal,
-          child: IntrinsicWidth(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Scrollbar(
+            controller: _projectManagersTableScrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _projectManagersTableScrollController,
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 // Sl. No. column
                 Column(
                   children: [
@@ -11036,10 +11311,12 @@ class _DashboardPageState extends State<DashboardPage> {
                     }),
                   ],
                 ),
-              ],
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -12285,6 +12562,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final agentsList = _agents ?? <Map<String, dynamic>>[];
     if (agentsList.isEmpty) {
       return Container(
+        width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: const Color(0xFFF8F9FA),
@@ -12346,6 +12624,7 @@ class _DashboardPageState extends State<DashboardPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
+          width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: const Color(0xFFF8F9FA),
@@ -12467,20 +12746,24 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildAgentsTable(List<Map<String, dynamic>> agents) {
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Scrollbar(
-        controller: _agentsTableScrollController,
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          controller: _agentsTableScrollController,
-          scrollDirection: Axis.horizontal,
-          child: IntrinsicWidth(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Scrollbar(
+            controller: _agentsTableScrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _agentsTableScrollController,
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 // Sl. No. column
                 Column(
                   children: [
@@ -12621,10 +12904,12 @@ class _DashboardPageState extends State<DashboardPage> {
                     }),
                   ],
                 ),
-              ],
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
