@@ -27571,13 +27571,19 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                         ),
                         child: TextField(
                           controller: confirmController,
+                          textAlignVertical: TextAlignVertical.center,
                           onChanged: (value) {
                             setDialogState(() {});
                           },
                           decoration: InputDecoration(
                             border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 12),
+                            contentPadding: const EdgeInsets.fromLTRB(
+                              8,
+                              12,
+                              8,
+                              4,
+                            ),
+                            isDense: true,
                             hintText: '',
                           ),
                           style: GoogleFonts.inter(
@@ -27757,18 +27763,21 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    'Delete all layouts',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.normal,
-                                      height: 1.0,
-                                      color: confirmController.text
-                                                  .toLowerCase()
-                                                  .trim() ==
-                                              'delete'
-                                          ? Colors.red
-                                          : Colors.red.withOpacity(0.5),
+                                  Transform.translate(
+                                    offset: const Offset(0, -4),
+                                    child: Text(
+                                      'Delete all layouts',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.normal,
+                                        height: 1.0,
+                                        color: confirmController.text
+                                                    .toLowerCase()
+                                                    .trim() ==
+                                                'delete'
+                                            ? Colors.red
+                                            : Colors.red.withOpacity(0.5),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
