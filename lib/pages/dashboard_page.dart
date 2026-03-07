@@ -205,7 +205,7 @@ class _DashboardPageState extends State<DashboardPage> {
   DashboardTab _activeTab = DashboardTab.overview;
 
   // Sales Activity filter state
-  String _selectedTimeFilter = '1D';
+  String _selectedTimeFilter = '7D';
 
   // Layouts toolbar state (Site tab)
   final Set<int> _collapsedLayouts = {};
@@ -2697,6 +2697,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           'Non-Sellable Area',
                           AreaUnitUtils.areaFromSqftToDisplay(
                               nonSellableArea, _isSqm),
+                          showDashWhenZero: true,
                           width: cardWidth,
                         ),
                         const SizedBox(width: interCardGap),
@@ -4584,13 +4585,20 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildSummaryAreaCard(String label, double value,
-      {double width = 265}) {
+  Widget _buildSummaryAreaCard(
+    String label,
+    double value, {
+    double width = 265,
+    bool showDashWhenZero = false,
+  }) {
     final valueStyle = GoogleFonts.inter(
       fontSize: 20,
       fontWeight: FontWeight.normal,
       color: Colors.black,
     );
+    final shouldShowDash = showDashWhenZero && value.abs() < 0.0000001;
+    final displayText =
+        shouldShowDash ? '-' : '${_formatNumberNoDecimals(value)} $_areaUnitSuffix';
 
     return _buildSummaryCard(
       width: width,
@@ -4599,7 +4607,7 @@ class _DashboardPageState extends State<DashboardPage> {
         children: [
           Expanded(
             child: Text(
-              '${_formatNumberNoDecimals(value)} $_areaUnitSuffix',
+              displayText,
               style: valueStyle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -8801,13 +8809,13 @@ class _DashboardPageState extends State<DashboardPage> {
                       children: [
                         _buildLayoutInfoItem(
                           label: 'Actual Total Sale Value:',
-                          value: '${_formatCurrencyNumber(totalSaleValue)} ₹',
+                          value: '₹ ${_formatCurrencyNumber(totalSaleValue)}',
                           valueColor: Colors.black.withOpacity(0.75),
                         ),
                         _buildLayoutInfoDot(),
                         _buildLayoutInfoItem(
                           label: 'Actual Gross Profit:',
-                          value: '${_formatCurrencyNumber(grossProfit)} ₹',
+                          value: '₹ ${_formatCurrencyNumber(grossProfit)}',
                           valueColor: Colors.black.withOpacity(0.75),
                         ),
                         _buildLayoutInfoDot(),
@@ -10185,24 +10193,38 @@ class _DashboardPageState extends State<DashboardPage> {
       (sum, partner) => sum + (partner['amount'] as double? ?? 0.0),
     );
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.25),
-            blurRadius: 2,
-            offset: const Offset(0, 0),
-            spreadRadius: 0,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    final partnersTableContentWidth = _getPartnersColumnWidth('Sl. No.') +
+        _getPartnersColumnWidth('Partner Name') +
+        _getPartnersColumnWidth('Capital Contribution (₹)') +
+        _getPartnersColumnWidth('Profit Share (%)') +
+        _getPartnersColumnWidth('Allocated Profit (₹)');
+    final partnersTableCardWidth = partnersTableContentWidth + 8;
+    final outerPartnersCardTargetWidth = partnersTableCardWidth + 32;
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final outerCardWidth =
+              math.min(constraints.maxWidth, outerPartnersCardTargetWidth);
+          return Container(
+            width: outerCardWidth,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F9FA),
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.25),
+                  blurRadius: 2,
+                  offset: const Offset(0, 0),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
           // Partners Profit Pool card (Figma design)
           Container(
             width: 320,
@@ -10283,7 +10305,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
           // Partners table
           _buildPartnersTable(totalCapitalContribution, totalGrossProfit),
-        ],
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -10318,22 +10343,29 @@ class _DashboardPageState extends State<DashboardPage> {
       };
     }).toList();
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-      ),
+    final tableContentWidth = _getPartnersColumnWidth('Sl. No.') +
+        _getPartnersColumnWidth('Partner Name') +
+        _getPartnersColumnWidth('Capital Contribution (₹)') +
+        _getPartnersColumnWidth('Profit Share (%)') +
+        _getPartnersColumnWidth('Allocated Profit (₹)');
+
+    return Align(
+      alignment: Alignment.centerLeft,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          return Scrollbar(
-            controller: _partnersTableScrollController,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
+          final cardWidth = math.min(constraints.maxWidth, tableContentWidth);
+          return Container(
+            width: cardWidth,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Scrollbar(
               controller: _partnersTableScrollController,
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: _partnersTableScrollController,
+                scrollDirection: Axis.horizontal,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -10627,6 +10659,20 @@ class _DashboardPageState extends State<DashboardPage> {
               final fixedColumnsWidth = 60 + 320 + 200 + 32; // 32px for padding
               final lastColumnWidth = (constraints.maxWidth - fixedColumnsWidth)
                   .clamp(400.0, double.infinity);
+              final partnerRows = _partners.map<Map<String, dynamic>>((partner) {
+                final groupedByLayout =
+                    _buildPartnerAssignedPlotsByLayout(partner);
+                final assignedCount = groupedByLayout.values
+                    .fold<int>(0, (sum, plots) => sum + plots.length);
+                final rowHeight = _estimatePartnerDistributionRowHeight(
+                    groupedByLayout, lastColumnWidth);
+                return {
+                  'partner': partner,
+                  'groupedByLayout': groupedByLayout,
+                  'assignedCount': assignedCount,
+                  'rowHeight': rowHeight,
+                };
+              }).toList();
 
               return Container(
                 decoration: BoxDecoration(
@@ -10648,12 +10694,15 @@ class _DashboardPageState extends State<DashboardPage> {
                     Column(
                       children: [
                         _buildPartnerDistHeaderCell('Sl. No.', isFirst: true),
-                        ..._partners.asMap().entries.map((entry) {
+                        ...partnerRows.asMap().entries.map((entry) {
                           final index = entry.key;
-                          final isLastRow = index == _partners.length - 1;
+                          final row = entry.value;
+                          final rowHeight = row['rowHeight'] as double? ?? 48.0;
+                          final isLastRow = index == partnerRows.length - 1;
                           return _buildPartnerDistDataCell(
                             '${index + 1}',
                             width: 60,
+                            height: rowHeight,
                             isFirst: true,
                             isLastRow: isLastRow,
                             centered: true,
@@ -10665,13 +10714,17 @@ class _DashboardPageState extends State<DashboardPage> {
                     Column(
                       children: [
                         _buildPartnerDistHeaderCell('Partner Name'),
-                        ..._partners.asMap().entries.map((entry) {
+                        ...partnerRows.asMap().entries.map((entry) {
                           final index = entry.key;
-                          final partner = entry.value;
-                          final isLastRow = index == _partners.length - 1;
+                          final row = entry.value;
+                          final partner =
+                              row['partner'] as Map<String, dynamic>? ?? {};
+                          final rowHeight = row['rowHeight'] as double? ?? 48.0;
+                          final isLastRow = index == partnerRows.length - 1;
                           return _buildPartnerDistDataCell(
                             partner['name'] as String? ?? '',
                             width: 320,
+                            height: rowHeight,
                             isLastRow: isLastRow,
                             hasBackground: true,
                             leftAlign: true,
@@ -10683,14 +10736,16 @@ class _DashboardPageState extends State<DashboardPage> {
                     Column(
                       children: [
                         _buildPartnerDistHeaderCell('No. of Plots Assigned'),
-                        ..._partners.asMap().entries.map((entry) {
+                        ...partnerRows.asMap().entries.map((entry) {
                           final index = entry.key;
-                          final partner = entry.value;
-                          final plotCount = partner['plotCount'] as int? ?? 0;
-                          final isLastRow = index == _partners.length - 1;
+                          final row = entry.value;
+                          final plotCount = row['assignedCount'] as int? ?? 0;
+                          final rowHeight = row['rowHeight'] as double? ?? 48.0;
+                          final isLastRow = index == partnerRows.length - 1;
                           return _buildPartnerDistDataCell(
                             plotCount.toString(),
                             width: 200,
+                            height: rowHeight,
                             isLastRow: isLastRow,
                             centered: true,
                             hasBackground: true,
@@ -10704,16 +10759,18 @@ class _DashboardPageState extends State<DashboardPage> {
                         children: [
                           _buildPartnerDistHeaderCell('Plot(s) Assigned',
                               isLast: true, width: lastColumnWidth),
-                          ..._partners.asMap().entries.map((entry) {
+                          ...partnerRows.asMap().entries.map((entry) {
                             final index = entry.key;
-                            final partner = entry.value;
-                            final assignedPlots =
-                                partner['assignedPlots'] as List<dynamic>? ??
-                                    [];
-                            final isLastRow = index == _partners.length - 1;
+                            final row = entry.value;
+                            final groupedByLayout =
+                                row['groupedByLayout'] as Map<String, List<String>>? ??
+                                    const <String, List<String>>{};
+                            final rowHeight = row['rowHeight'] as double? ?? 48.0;
+                            final isLastRow = index == partnerRows.length - 1;
                             return _buildPlotAssignedCell(
-                              assignedPlots,
+                              groupedByLayout: groupedByLayout,
                               width: lastColumnWidth,
+                              rowHeight: rowHeight,
                               isLastRow: isLastRow,
                               isLast: true,
                             );
@@ -10782,6 +10839,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildPartnerDistDataCell(
     String text, {
     required double width,
+    double height = 48,
     bool isFirst = false,
     bool isLastRow = false,
     bool isLast = false,
@@ -10790,7 +10848,7 @@ class _DashboardPageState extends State<DashboardPage> {
     bool leftAlign = false,
   }) {
     return Container(
-      height: 48,
+      height: height,
       width: width,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
@@ -10826,15 +10884,125 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  Map<String, List<String>> _buildPartnerAssignedPlotsByLayout(
+      Map<String, dynamic> partner) {
+    final groupedByLayout = <String, List<String>>{};
+    final seenPairs = <String>{};
+
+    void addPlot({
+      required String layoutName,
+      required String plotNumber,
+    }) {
+      final normalizedLayout = layoutName.trim().isEmpty ? 'Unknown' : layoutName.trim();
+      final normalizedPlot = plotNumber.trim();
+      if (normalizedPlot.isEmpty) return;
+      final key =
+          '${normalizedLayout.toLowerCase()}::${normalizedPlot.toLowerCase()}';
+      if (!seenPairs.add(key)) return;
+      groupedByLayout.putIfAbsent(normalizedLayout, () => <String>[]);
+      groupedByLayout[normalizedLayout]!.add(normalizedPlot);
+    }
+
+    final partnerNameNorm = _normalizePartnerName(partner['name']);
+    if (partnerNameNorm.isNotEmpty && _siteLayouts.isNotEmpty) {
+      for (final layout in _siteLayouts) {
+        final layoutName = (layout['name'] ?? '').toString();
+        final plots = (layout['plots'] as List?) ?? const [];
+        for (final rawPlot in plots) {
+          if (rawPlot is! Map) continue;
+          final plot = Map<String, dynamic>.from(rawPlot);
+          final plotNumber =
+              (plot['plot_number'] ?? plot['plotNumber'] ?? '').toString().trim();
+          if (plotNumber.isEmpty) continue;
+          final plotPartners = ((plot['partners'] as List?) ?? const [])
+              .map((e) => _normalizePartnerName(e))
+              .where((e) => e.isNotEmpty);
+          if (plotPartners.contains(partnerNameNorm)) {
+            addPlot(layoutName: layoutName, plotNumber: plotNumber);
+          }
+        }
+      }
+    }
+
+    if (groupedByLayout.isEmpty) {
+      final layoutMap = <String, String>{};
+      final layoutMapRaw = partner['plotNumberToLayoutMap'];
+      if (layoutMapRaw is Map) {
+        layoutMapRaw.forEach((key, value) {
+          final plotNo = key?.toString().trim() ?? '';
+          final layoutName = value?.toString().trim() ?? '';
+          if (plotNo.isNotEmpty) {
+            layoutMap[plotNo] = layoutName.isEmpty ? 'Unknown' : layoutName;
+          }
+        });
+      }
+
+      final assignedDetailed = (partner['assignedPlotsDetailed'] as List?) ?? const [];
+      if (assignedDetailed.isNotEmpty) {
+        for (final raw in assignedDetailed) {
+          if (raw is! Map) continue;
+          final detail = Map<String, dynamic>.from(raw);
+          addPlot(
+            layoutName: (detail['layout'] ?? '').toString(),
+            plotNumber: (detail['plot'] ?? '').toString(),
+          );
+        }
+      } else {
+        final assignedPlots = (partner['assignedPlots'] as List?) ?? const [];
+        for (final raw in assignedPlots) {
+          final plotNo = raw?.toString().trim() ?? '';
+          if (plotNo.isEmpty) continue;
+          addPlot(
+            layoutName: layoutMap[plotNo] ?? 'Unknown',
+            plotNumber: plotNo,
+          );
+        }
+      }
+    }
+
+    final sortedLayoutNames = groupedByLayout.keys.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final sorted = <String, List<String>>{};
+    for (final layoutName in sortedLayoutNames) {
+      final plots = List<String>.from(groupedByLayout[layoutName] ?? const []);
+      plots.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      sorted[layoutName] = plots;
+    }
+    return sorted;
+  }
+
+  double _estimatePartnerDistributionRowHeight(
+    Map<String, List<String>> groupedByLayout,
+    double lastColumnWidth,
+  ) {
+    if (groupedByLayout.isEmpty) return 48;
+    final chipsPerLine =
+        math.max(1, ((lastColumnWidth - 32) / 52).floor());
+    int totalChipLines = 0;
+    for (final plots in groupedByLayout.values) {
+      final count = math.max(1, plots.length);
+      totalChipLines += (count / chipsPerLine).ceil();
+    }
+
+    final layoutCount = math.max(1, groupedByLayout.length);
+    final estimatedHeight = (layoutCount * 22.0) +
+        (totalChipLines * 28.0) +
+        ((layoutCount - 1) * 8.0) +
+        16.0;
+    return math.max(48.0, estimatedHeight);
+  }
+
   Widget _buildPlotAssignedCell(
-    List<dynamic> assignedPlots, {
+    {
+    required Map<String, List<String>> groupedByLayout,
     required double width,
+    required double rowHeight,
     bool isFirst = false,
     bool isLastRow = false,
     bool isLast = false,
   }) {
     return Container(
-      height: 48,
+      height: rowHeight,
       constraints: BoxConstraints(minWidth: width),
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
@@ -10853,7 +11021,7 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: assignedPlots.isEmpty
+        child: groupedByLayout.isEmpty
             ? Text(
                 '-',
                 style: GoogleFonts.inter(
@@ -10862,46 +11030,61 @@ class _DashboardPageState extends State<DashboardPage> {
                   color: const Color(0xFF5D5D5D),
                 ),
               )
-            : SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (int i = 0; i < assignedPlots.length; i++) ...[
-                      Container(
-                        height: 36,
-                        constraints: const BoxConstraints(minWidth: 36),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8F9FA),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Center(
-                          child: Text(
-                            assignedPlots[i].toString(),
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black,
-                            ),
-                          ),
-                        ),
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: groupedByLayout.entries
+                    .toList()
+                    .asMap()
+                    .entries
+                    .expand((layoutEntry) {
+                  final index = layoutEntry.key;
+                  final entry = layoutEntry.value;
+                  return [
+                    Text(
+                      'Layout: ${entry.key}',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF404040),
                       ),
-                      if (i < assignedPlots.length - 1)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: Text(
-                            ',',
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              fontWeight: FontWeight.normal,
-                              color: Colors.black,
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: entry.value
+                          .map(
+                            (plotNo) => Container(
+                              height: 36,
+                              constraints: const BoxConstraints(minHeight: 36),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8F9FA),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Align(
+                                alignment: Alignment.center,
+                                widthFactor: 1,
+                                child: Text(
+                                  plotNo,
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                    ],
-                  ],
-                ),
+                          )
+                          .toList(),
+                    ),
+                    if (index != groupedByLayout.length - 1)
+                      const SizedBox(height: 8),
+                  ];
+                }).toList(),
               ),
       ),
     );
@@ -15098,16 +15281,15 @@ class _ChartPainter extends CustomPainter {
 
     // Draw sales data based on time filter
     if (timeFilter == '1D') {
-      // For 1D: draw horizontal dashed line at today's sales value
+      // For 1D: always show today's marker, even when sales are 0.
+      final valueRatio = (todaysSales / maxY).clamp(0.0, 1.0);
+      final yPosition = size.height - (valueRatio * (5 * gridSpacing));
+
+      print(
+          'DEBUG ChartPainter: yPosition = $yPosition, size.height = ${size.height}');
+
       if (todaysSales > 0) {
         print('DEBUG ChartPainter: Drawing 1D line for $todaysSales sales');
-        // Calculate Y position for the sales value
-        final valueRatio = todaysSales / maxY;
-        final yPosition = size.height - (valueRatio * (5 * gridSpacing));
-
-        print(
-            'DEBUG ChartPainter: yPosition = $yPosition, size.height = ${size.height}');
-
         // Draw dashed horizontal line
         final dashedPaint = Paint()
           ..color = const Color(0xFF0C8CE9)
@@ -15126,25 +15308,25 @@ class _ChartPainter extends CustomPainter {
           );
           startX += dashWidth + dashSpace;
         }
-
-        // Draw diamond/dot marker at consistent position (Today position)
-        const xOffset = 40.0;
-        final markerX = xOffset;
-        final markerPaint = Paint()
-          ..color = const Color(0xFF0C8CE9)
-          ..style = PaintingStyle.fill;
-
-        // Draw diamond shape (rotated square)
-        final markerSize = 6.0;
-        final markerPath = Path()
-          ..moveTo(markerX, yPosition - markerSize) // top
-          ..lineTo(markerX + markerSize, yPosition) // right
-          ..lineTo(markerX, yPosition + markerSize) // bottom
-          ..lineTo(markerX - markerSize, yPosition) // left
-          ..close();
-
-        canvas.drawPath(markerPath, markerPaint);
       }
+
+      // Align 1D marker with the "Today" tick/black extension on the x-axis row.
+      const todayTickXShift = -10.0;
+      final markerX = (size.width / 2) + todayTickXShift;
+      final markerPaint = Paint()
+        ..color = const Color(0xFF0C8CE9)
+        ..style = PaintingStyle.fill;
+
+      const markerSize = 6.0;
+      final markerY = yPosition;
+      final markerPath = Path()
+        ..moveTo(markerX, markerY - markerSize) // top
+        ..lineTo(markerX + markerSize, markerY) // right
+        ..lineTo(markerX, markerY + markerSize) // bottom
+        ..lineTo(markerX - markerSize, markerY) // left
+        ..close();
+
+      canvas.drawPath(markerPath, markerPaint);
     } else {
       // For 7D and 28D: draw lines connecting data points
       if (salesData.isNotEmpty) {

@@ -107,6 +107,8 @@ class _DocumentsPageState extends State<DocumentsPage> {
   bool _hasPendingLayoutViewerEdits = false;
   bool _isSavingLayoutViewerEdits = false;
   Timer? _layoutViewerAutosaveTimer;
+  OverlayEntry? _layoutImageViewerOverlayEntry;
+  bool _isDeletingLayoutViewerImage = false;
 
   Widget _skeletonBlock({required double width, required double height}) {
     return Container(
@@ -215,6 +217,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
   @override
   void dispose() {
     _layoutViewerAutosaveTimer?.cancel();
+    _removeLayoutImageViewerOverlayEntry();
     _layoutImageViewerController.dispose();
     _layoutViewerPaintVersion.dispose();
     super.dispose();
@@ -912,6 +915,133 @@ class _DocumentsPageState extends State<DocumentsPage> {
     }
   }
 
+  Future<void> _deleteActiveLayoutImage() async {
+    if (_isDeletingLayoutViewerImage) return;
+    final projectId = widget.projectId?.trim();
+    if (projectId == null || projectId.isEmpty) return;
+
+    _isDeletingLayoutViewerImage = true;
+    _layoutViewerAutosaveTimer?.cancel();
+
+    try {
+      String storagePath =
+          _resolveDocumentStoragePath(_activeLayoutImageStoragePath);
+      String docId = _activeLayoutImageDocId.trim();
+
+      if (storagePath.isEmpty && docId.isNotEmpty) {
+        final byId = await _supabase
+            .from('documents')
+            .select('file_url')
+            .eq('id', docId)
+            .maybeSingle();
+        storagePath = _resolveDocumentStoragePath(
+          (byId?['file_url'] ?? '').toString(),
+        );
+      }
+
+      if (docId.isEmpty && storagePath.isNotEmpty) {
+        final byPath = await _supabase
+            .from('documents')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('file_url', storagePath)
+            .maybeSingle();
+        docId = (byPath?['id'] ?? '').toString().trim();
+      }
+
+      if (storagePath.isNotEmpty) {
+        try {
+          await _supabase.storage.from('documents').remove([storagePath]);
+        } catch (_) {}
+      }
+
+      if (docId.isNotEmpty) {
+        await _supabase.from('documents').delete().eq('id', docId);
+      } else if (storagePath.isNotEmpty) {
+        await _supabase
+            .from('documents')
+            .delete()
+            .eq('project_id', projectId)
+            .eq('file_url', storagePath);
+      }
+
+      if (docId.isNotEmpty) {
+        try {
+          await _supabase
+              .from('layouts')
+              .update({
+                'layout_image_name': '',
+                'layout_image_path': '',
+                'layout_image_doc_id': '',
+                'layout_image_extension': '',
+              })
+              .eq('project_id', projectId)
+              .eq('layout_image_doc_id', docId);
+        } catch (_) {}
+      }
+      if (storagePath.isNotEmpty) {
+        try {
+          await _supabase
+              .from('layouts')
+              .update({
+                'layout_image_name': '',
+                'layout_image_path': '',
+                'layout_image_doc_id': '',
+                'layout_image_extension': '',
+              })
+              .eq('project_id', projectId)
+              .eq('layout_image_path', storagePath);
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        setState(() {
+          _documents.removeWhere((item) {
+            final itemId = (item['id'] ?? '').toString().trim();
+            final itemPath = _resolveDocumentStoragePath(
+              (item['url'] ?? '').toString(),
+            );
+            return (docId.isNotEmpty && itemId == docId) ||
+                (storagePath.isNotEmpty && itemPath == storagePath);
+          });
+          _isLayoutImageViewerOpen = false;
+          _activeLayoutImageUrl = '';
+          _activeLayoutImageStoragePath = '';
+          _activeLayoutImageDocId = '';
+          _activeLayoutImageName = '';
+          _activeLayoutImageExtension = '';
+          _isLayoutPenModeActive = true;
+          _isLayoutEraserModeActive = false;
+          _isLayoutPanModeActive = false;
+          _isLayoutThicknessPickerVisible = false;
+          _isLayoutThicknessPickerForEraser = false;
+          _isLayoutColorPickerVisible = false;
+          _layoutViewerStrokes.clear();
+          _activeLayoutStrokeIndex = null;
+          _activeLayoutStrokePointerId = null;
+          _layoutViewerLastCanvasSize = Size.zero;
+          _hasPendingLayoutViewerEdits = false;
+        });
+      }
+      _removeLayoutImageViewerOverlayEntry();
+      _layoutImageViewerController.value = Matrix4.identity();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Layout image deleted.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete layout image: $e')),
+        );
+      }
+    } finally {
+      _isDeletingLayoutViewerImage = false;
+    }
+  }
+
   void _openLayoutImageViewerForDocument(Map<String, dynamic> doc) {
     final urlOrPath = (doc['url'] ?? '').toString().trim();
     if (urlOrPath.isEmpty) return;
@@ -939,6 +1069,13 @@ class _DocumentsPageState extends State<DocumentsPage> {
       _layoutViewerLastCanvasSize = Size.zero;
       _hasPendingLayoutViewerEdits = false;
     });
+    _removeLayoutImageViewerOverlayEntry();
+    final rootOverlay = Overlay.of(context, rootOverlay: true);
+    final entry = OverlayEntry(
+      builder: (_) => _buildLayoutImageViewerOverlay(),
+    );
+    _layoutImageViewerOverlayEntry = entry;
+    rootOverlay.insert(entry);
     _layoutViewerAutosaveTimer?.cancel();
     _layoutImageViewerController.value = Matrix4.identity();
   }
@@ -962,6 +1099,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
     } finally {
       _isSavingLayoutViewerEdits = false;
     }
+    _removeLayoutImageViewerOverlayEntry();
     if (!mounted) return;
     setState(() {
       _isLayoutImageViewerOpen = false;
@@ -1120,11 +1258,35 @@ class _DocumentsPageState extends State<DocumentsPage> {
 
     final width = max(1, sourceImage.naturalWidth ?? sourceImage.width ?? 0);
     final height = max(1, sourceImage.naturalHeight ?? sourceImage.height ?? 0);
-    final widthScale =
-        drawingCanvasSize.width > 0 ? width / drawingCanvasSize.width : 1.0;
-    final heightScale =
-        drawingCanvasSize.height > 0 ? height / drawingCanvasSize.height : 1.0;
-    final strokeScale = min(widthScale, heightScale);
+    final effectiveCanvasWidth = drawingCanvasSize.width > 0
+        ? drawingCanvasSize.width
+        : width.toDouble();
+    final effectiveCanvasHeight = drawingCanvasSize.height > 0
+        ? drawingCanvasSize.height
+        : height.toDouble();
+    final fitScale = max(
+      0.0001,
+      min(
+        effectiveCanvasWidth / width.toDouble(),
+        effectiveCanvasHeight / height.toDouble(),
+      ),
+    );
+    final drawnImageWidth = width * fitScale;
+    final drawnImageHeight = height * fitScale;
+    final imageOffsetX = (effectiveCanvasWidth - drawnImageWidth) / 2;
+    final imageOffsetY = (effectiveCanvasHeight - drawnImageHeight) / 2;
+    final strokeScale = 1 / fitScale;
+
+    Offset mapNormalizedPointToSource(Offset normalizedPoint) {
+      final canvasX = normalizedPoint.dx * effectiveCanvasWidth;
+      final canvasY = normalizedPoint.dy * effectiveCanvasHeight;
+      final sourceX =
+          ((canvasX - imageOffsetX) / fitScale).clamp(0.0, width.toDouble());
+      final sourceY =
+          ((canvasY - imageOffsetY) / fitScale).clamp(0.0, height.toDouble());
+      return Offset(sourceX, sourceY);
+    }
+
     final canvas = html.CanvasElement(width: width, height: height);
     final ctx = canvas.context2D;
     ctx.drawImageScaled(sourceImage, 0, 0, width.toDouble(), height.toDouble());
@@ -1134,25 +1296,25 @@ class _DocumentsPageState extends State<DocumentsPage> {
       final lineWidth = max(1.0, stroke.thickness * 2.0 * strokeScale);
       final strokeStyle = _cssColorFromColor(stroke.color);
       if (stroke.normalizedPoints.length == 1) {
-        final p = stroke.normalizedPoints.first;
+        final p = mapNormalizedPointToSource(stroke.normalizedPoints.first);
         ctx
           ..fillStyle = strokeStyle
           ..beginPath()
-          ..arc(p.dx * width, p.dy * height, lineWidth / 2, 0, pi * 2)
+          ..arc(p.dx, p.dy, lineWidth / 2, 0, pi * 2)
           ..fill();
         continue;
       }
-      final first = stroke.normalizedPoints.first;
+      final first = mapNormalizedPointToSource(stroke.normalizedPoints.first);
       ctx
         ..beginPath()
         ..strokeStyle = strokeStyle
         ..lineWidth = lineWidth
         ..lineCap = 'round'
         ..lineJoin = 'round'
-        ..moveTo(first.dx * width, first.dy * height);
+        ..moveTo(first.dx, first.dy);
       for (int i = 1; i < stroke.normalizedPoints.length; i++) {
-        final p = stroke.normalizedPoints[i];
-        ctx.lineTo(p.dx * width, p.dy * height);
+        final p = mapNormalizedPointToSource(stroke.normalizedPoints[i]);
+        ctx.lineTo(p.dx, p.dy);
       }
       ctx.stroke();
     }
@@ -1193,6 +1355,15 @@ class _DocumentsPageState extends State<DocumentsPage> {
   String _cssColorFromColor(Color color) {
     final alpha = (color.alpha / 255).toStringAsFixed(3);
     return 'rgba(${color.red},${color.green},${color.blue},$alpha)';
+  }
+
+  void _removeLayoutImageViewerOverlayEntry() {
+    _layoutImageViewerOverlayEntry?.remove();
+    _layoutImageViewerOverlayEntry = null;
+  }
+
+  void _markLayoutImageViewerOverlayNeedsBuild() {
+    _layoutImageViewerOverlayEntry?.markNeedsBuild();
   }
 
   void _notifyLayoutViewerPaint() {
@@ -1237,6 +1408,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
         _isLayoutThicknessPickerForEraser = false;
       }
     });
+    _markLayoutImageViewerOverlayNeedsBuild();
   }
 
   void _setLayoutColorPickerVisible(bool visible) {
@@ -1247,6 +1419,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
         _isLayoutThicknessPickerForEraser = false;
       }
     });
+    _markLayoutImageViewerOverlayNeedsBuild();
   }
 
   void _closeLayoutToolPickers() {
@@ -1255,21 +1428,25 @@ class _DocumentsPageState extends State<DocumentsPage> {
       _isLayoutThicknessPickerForEraser = false;
       _isLayoutColorPickerVisible = false;
     });
+    _markLayoutImageViewerOverlayNeedsBuild();
   }
 
   void _selectLayoutColorOption(int index) {
     if (index < 0 || index >= _layoutColorOptions.length) return;
     setState(() => _selectedLayoutColorIndex = index);
+    _markLayoutImageViewerOverlayNeedsBuild();
   }
 
   void _selectLayoutThicknessOption(int index) {
     if (index < 0 || index >= _layoutThicknessOptions.length) return;
     setState(() => _selectedLayoutThicknessIndex = index);
+    _markLayoutImageViewerOverlayNeedsBuild();
   }
 
   void _selectLayoutEraserThicknessOption(int index) {
     if (index < 0 || index >= _layoutThicknessOptions.length) return;
     setState(() => _selectedLayoutEraserThicknessIndex = index);
+    _markLayoutImageViewerOverlayNeedsBuild();
   }
 
   void _toggleLayoutPenMode() {
@@ -1284,6 +1461,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
         _activeLayoutStrokePointerId = null;
       }
     });
+    _markLayoutImageViewerOverlayNeedsBuild();
   }
 
   void _activateLayoutPanMode() {
@@ -1294,6 +1472,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
       _activeLayoutStrokeIndex = null;
       _activeLayoutStrokePointerId = null;
     });
+    _markLayoutImageViewerOverlayNeedsBuild();
   }
 
   void _activateLayoutEraserMode() {
@@ -1304,6 +1483,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
       _activeLayoutStrokeIndex = null;
       _activeLayoutStrokePointerId = null;
     });
+    _markLayoutImageViewerOverlayNeedsBuild();
   }
 
   void _zoomLayoutImageViewerByStep(double step) {
@@ -1663,20 +1843,19 @@ class _DocumentsPageState extends State<DocumentsPage> {
 
     const double baseImageBoxWidth = 1080;
     const double baseImageBoxHeight = 768;
-    const double optionWidth = 75;
-    const double optionHeight = 73;
-    const double optionGap = 12;
+    const double baseOptionWidth = 75;
+    const double baseOptionHeight = 73;
+    const double baseOptionGap = 12;
+    const double baseCloseIconSize = 42;
+    const double baseCloseIconGapToPen = 63;
     const double railGapFromImage = 20;
     const double viewportPadding = 24;
     const double thicknessPanelWidth = 91;
     const double thicknessPanelTopOffset = 0;
     const double thicknessPanelRightShift = 4;
     const double thicknessIconExtraWidth = 8;
-    const double thicknessIconExpandedWidth =
-        optionWidth + thicknessIconExtraWidth;
-    const double bottomActionIconSize = 75;
-    const double bottomActionIconGap = 35;
-    const double bottomActionTopGap = 24;
+    const double baseBottomActionIconGap = 35;
+    const double baseBottomActionTopGap = 24;
     const int toolCount = 8;
 
     return Positioned.fill(
@@ -1684,7 +1863,14 @@ class _DocumentsPageState extends State<DocumentsPage> {
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: _closeLayoutImageViewer,
+            onTap: () {
+              if (_isLayoutThicknessPickerVisible ||
+                  _isLayoutColorPickerVisible) {
+                _closeLayoutToolPickers();
+                return;
+              }
+              _closeLayoutImageViewer();
+            },
             child: Container(
               color: Colors.black.withValues(alpha: 0.3),
             ),
@@ -1702,27 +1888,61 @@ class _DocumentsPageState extends State<DocumentsPage> {
                   200.0,
                   double.infinity,
                 );
+                final mainAreaAvailableHeight = max(
+                  200.0,
+                  availableHeight -
+                      (baseCloseIconSize + baseCloseIconGapToPen) -
+                      baseBottomActionTopGap -
+                      baseOptionHeight,
+                );
                 final maxImageWidth = max(
                   200.0,
-                  availableWidth - railGapFromImage - optionWidth,
+                  availableWidth - railGapFromImage - baseOptionWidth,
                 );
                 final scale = min(
                   1.0,
                   min(
                     maxImageWidth / baseImageBoxWidth,
-                    availableHeight / baseImageBoxHeight,
+                    mainAreaAvailableHeight / baseImageBoxHeight,
                   ),
                 );
                 final imageBoxWidth = baseImageBoxWidth * scale;
                 final imageBoxHeight = baseImageBoxHeight * scale;
+                final baseSideRailHeight = baseCloseIconSize +
+                    baseCloseIconGapToPen +
+                    (baseOptionHeight * toolCount) +
+                    (baseOptionGap * (toolCount - 1));
+                final sideToolScale =
+                    min(1.0, imageBoxHeight / baseSideRailHeight);
+                final optionWidth = baseOptionWidth * sideToolScale;
+                final optionHeight = baseOptionHeight * sideToolScale;
+                final optionGap = baseOptionGap * sideToolScale;
+                final closeIconSize = baseCloseIconSize * sideToolScale;
+                final closeIconGapToPen = baseCloseIconGapToPen * sideToolScale;
+                final bottomActionIconWidth = optionWidth;
+                final bottomActionIconHeight = optionHeight;
+                final bottomActionIconGap =
+                    baseBottomActionIconGap * sideToolScale;
+                final bottomActionTopGap =
+                    baseBottomActionTopGap * sideToolScale;
+                final thicknessIconExpandedWidth =
+                    optionWidth + (thicknessIconExtraWidth * sideToolScale);
                 final railBaseHeight =
                     (optionHeight * toolCount) + (optionGap * (toolCount - 1));
-                final viewerHeight = max(imageBoxHeight, railBaseHeight);
-                final railTopInset = (viewerHeight - railBaseHeight) / 2;
+                final closeTopInset = closeIconSize + closeIconGapToPen;
+                final viewerMainHeight = max(imageBoxHeight, railBaseHeight);
+                final viewerHeight = closeTopInset +
+                    viewerMainHeight +
+                    bottomActionTopGap +
+                    bottomActionIconHeight;
+                final railTopInset = (viewerMainHeight - railBaseHeight) / 2;
                 final imageTopInset =
-                    max(0.0, (viewerHeight - imageBoxHeight) / 2);
+                    max(0.0, (viewerMainHeight - imageBoxHeight) / 2);
                 double toolTop(int toolIndex) =>
-                    railTopInset + ((optionHeight + optionGap) * toolIndex);
+                    closeTopInset +
+                    railTopInset +
+                    ((optionHeight + optionGap) * toolIndex);
+                final closeIconRightInset = (optionWidth - closeIconSize) / 2;
 
                 return Center(
                   child: GestureDetector(
@@ -1733,343 +1953,409 @@ class _DocumentsPageState extends State<DocumentsPage> {
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: imageBoxWidth,
-                                height: imageBoxHeight,
-                                clipBehavior: Clip.hardEdge,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Listener(
+                          Positioned(
+                            top: closeTopInset,
+                            left: 0,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                GestureDetector(
                                   behavior: HitTestBehavior.opaque,
-                                  onPointerDown: (details) {
-                                    _handleLayoutViewerPointerDown(
-                                      details: details,
-                                      canvasSize:
-                                          Size(imageBoxWidth, imageBoxHeight),
-                                    );
-                                  },
-                                  onPointerMove: (details) {
-                                    _handleLayoutViewerPointerMove(
-                                      details: details,
-                                      canvasSize:
-                                          Size(imageBoxWidth, imageBoxHeight),
-                                    );
-                                  },
-                                  onPointerUp: (details) {
-                                    _handleLayoutViewerPointerUpOrCancel(
-                                      pointerId: details.pointer,
-                                    );
-                                  },
-                                  onPointerCancel: (details) {
-                                    _handleLayoutViewerPointerUpOrCancel(
-                                      pointerId: details.pointer,
-                                    );
-                                  },
-                                  child: InteractiveViewer(
-                                    transformationController:
-                                        _layoutImageViewerController,
-                                    minScale: 0.5,
-                                    maxScale: 4.0,
-                                    panEnabled: !_isLayoutPenModeActive &&
-                                        !_isLayoutEraserModeActive,
-                                    scaleEnabled: !_isLayoutPenModeActive &&
-                                        !_isLayoutEraserModeActive,
+                                  onTap: _closeLayoutToolPickers,
+                                  child: Container(
+                                    width: imageBoxWidth,
+                                    height: imageBoxHeight,
                                     clipBehavior: Clip.hardEdge,
-                                    child: SizedBox(
-                                      width: imageBoxWidth,
-                                      height: imageBoxHeight,
-                                      child: Stack(
-                                        fit: StackFit.expand,
-                                        children: [
-                                          Image.network(
-                                            _activeLayoutImageUrl,
-                                            fit: BoxFit.contain,
-                                            alignment: Alignment.center,
-                                          ),
-                                          IgnorePointer(
-                                            child: CustomPaint(
-                                              painter:
-                                                  _DocumentLayoutViewerStrokesPainter(
-                                                strokes: _layoutViewerStrokes,
-                                                repaint:
-                                                    _layoutViewerPaintVersion,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Listener(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPointerDown: (details) {
+                                        _closeLayoutToolPickers();
+                                        _handleLayoutViewerPointerDown(
+                                          details: details,
+                                          canvasSize: Size(
+                                              imageBoxWidth, imageBoxHeight),
+                                        );
+                                      },
+                                      onPointerMove: (details) {
+                                        _handleLayoutViewerPointerMove(
+                                          details: details,
+                                          canvasSize: Size(
+                                              imageBoxWidth, imageBoxHeight),
+                                        );
+                                      },
+                                      onPointerUp: (details) {
+                                        _handleLayoutViewerPointerUpOrCancel(
+                                          pointerId: details.pointer,
+                                        );
+                                      },
+                                      onPointerCancel: (details) {
+                                        _handleLayoutViewerPointerUpOrCancel(
+                                          pointerId: details.pointer,
+                                        );
+                                      },
+                                      child: InteractiveViewer(
+                                        transformationController:
+                                            _layoutImageViewerController,
+                                        minScale: 0.5,
+                                        maxScale: 4.0,
+                                        panEnabled: !_isLayoutPenModeActive &&
+                                            !_isLayoutEraserModeActive,
+                                        scaleEnabled: !_isLayoutPenModeActive &&
+                                            !_isLayoutEraserModeActive,
+                                        clipBehavior: Clip.hardEdge,
+                                        child: SizedBox(
+                                          width: imageBoxWidth,
+                                          height: imageBoxHeight,
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              Image.network(
+                                                _activeLayoutImageUrl,
+                                                fit: BoxFit.contain,
+                                                alignment: Alignment.center,
+                                                loadingBuilder: (context, child,
+                                                    loadingProgress) {
+                                                  if (loadingProgress == null) {
+                                                    return child;
+                                                  }
+                                                  return const Center(
+                                                    child: SizedBox(
+                                                      width: 28,
+                                                      height: 28,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                        strokeWidth: 2.5,
+                                                        color:
+                                                            Color(0xFF0C8CE9),
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                errorBuilder: (
+                                                  context,
+                                                  error,
+                                                  stackTrace,
+                                                ) {
+                                                  return Center(
+                                                    child: Text(
+                                                      'Unable to load layout image.',
+                                                      style: GoogleFonts.inter(
+                                                        color: Colors.black,
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
                                               ),
-                                            ),
+                                              IgnorePointer(
+                                                child: CustomPaint(
+                                                  painter:
+                                                      _DocumentLayoutViewerStrokesPainter(
+                                                    strokes:
+                                                        _layoutViewerStrokes,
+                                                    repaint:
+                                                        _layoutViewerPaintVersion,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: railGapFromImage),
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _buildLayoutImageViewerToolButton(
-                                    iconAssetPath: _isLayoutPenModeActive
-                                        ? 'assets/images/Pen_active.svg'
-                                        : 'assets/images/Pen.svg',
-                                    onTap: _toggleLayoutPenMode,
-                                    width: optionWidth,
-                                    height: optionHeight,
-                                  ),
-                                  const SizedBox(height: optionGap),
-                                  Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      SizedBox(
-                                        width: optionWidth,
-                                        height: optionHeight,
-                                        child: Stack(
-                                          clipBehavior: Clip.none,
-                                          children: [
-                                            Positioned(
-                                              right: 0,
-                                              top: 0,
-                                              child: _isLayoutThicknessPickerVisible &&
-                                                      !_isLayoutThicknessPickerForEraser
-                                                  ? GestureDetector(
-                                                      onTap: () {
-                                                        final shouldClose =
-                                                            _isLayoutThicknessPickerVisible &&
-                                                                !_isLayoutThicknessPickerForEraser;
-                                                        _setLayoutThicknessPickerVisible(
-                                                          !shouldClose,
-                                                        );
-                                                      },
-                                                      behavior: HitTestBehavior
-                                                          .opaque,
-                                                      child: SizedBox(
-                                                        width:
-                                                            thicknessIconExpandedWidth,
-                                                        height: optionHeight,
-                                                        child: ClipRRect(
-                                                          borderRadius:
-                                                              const BorderRadius
-                                                                  .only(
-                                                            topRight:
-                                                                Radius.circular(
-                                                                    16),
-                                                            bottomRight:
-                                                                Radius.circular(
-                                                                    16),
-                                                          ),
-                                                          child:
-                                                              SvgPicture.asset(
-                                                            'assets/images/Thickness_open_active.svg',
-                                                            fit: BoxFit.fill,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    )
-                                                  : _buildLayoutImageViewerToolButton(
-                                                      iconAssetPath:
-                                                          'assets/images/Thickness.svg',
-                                                      onTap: () {
-                                                        final shouldClose =
-                                                            _isLayoutThicknessPickerVisible &&
-                                                                !_isLayoutThicknessPickerForEraser;
-                                                        _setLayoutThicknessPickerVisible(
-                                                          !shouldClose,
-                                                        );
-                                                      },
-                                                      width: optionWidth,
-                                                      height: optionHeight,
-                                                    ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: optionGap),
-                                  Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      SizedBox(
-                                        width: optionWidth,
-                                        height: optionHeight,
-                                        child: Stack(
-                                          clipBehavior: Clip.none,
-                                          children: [
-                                            Positioned(
-                                              right: 0,
-                                              top: 0,
-                                              child: _isLayoutColorPickerVisible
-                                                  ? GestureDetector(
-                                                      onTap: () {
-                                                        final shouldClose =
-                                                            _isLayoutColorPickerVisible;
-                                                        _setLayoutColorPickerVisible(
-                                                          !shouldClose,
-                                                        );
-                                                      },
-                                                      behavior: HitTestBehavior
-                                                          .opaque,
-                                                      child: SizedBox(
-                                                        width:
-                                                            thicknessIconExpandedWidth,
-                                                        height: optionHeight,
-                                                        child: ClipRRect(
-                                                          borderRadius:
-                                                              const BorderRadius
-                                                                  .only(
-                                                            topRight:
-                                                                Radius.circular(
-                                                                    16),
-                                                            bottomRight:
-                                                                Radius.circular(
-                                                                    16),
-                                                          ),
-                                                          child:
-                                                              SvgPicture.asset(
-                                                            'assets/images/Color_open_active.svg',
-                                                            fit: BoxFit.fill,
+                                const SizedBox(width: railGapFromImage),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _buildLayoutImageViewerToolButton(
+                                      iconAssetPath: _isLayoutPenModeActive
+                                          ? 'assets/images/Pen_active.svg'
+                                          : 'assets/images/Pen.svg',
+                                      onTap: () {
+                                        _closeLayoutToolPickers();
+                                        _toggleLayoutPenMode();
+                                      },
+                                      width: optionWidth,
+                                      height: optionHeight,
+                                    ),
+                                    SizedBox(height: optionGap),
+                                    Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        SizedBox(
+                                          width: optionWidth,
+                                          height: optionHeight,
+                                          child: Stack(
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              Positioned(
+                                                right: 0,
+                                                top: 0,
+                                                child: _isLayoutThicknessPickerVisible &&
+                                                        !_isLayoutThicknessPickerForEraser
+                                                    ? GestureDetector(
+                                                        onTap: () {
+                                                          final shouldClose =
+                                                              _isLayoutThicknessPickerVisible &&
+                                                                  !_isLayoutThicknessPickerForEraser;
+                                                          _setLayoutThicknessPickerVisible(
+                                                            !shouldClose,
+                                                          );
+                                                        },
+                                                        behavior:
+                                                            HitTestBehavior
+                                                                .opaque,
+                                                        child: SizedBox(
+                                                          width:
+                                                              thicknessIconExpandedWidth,
+                                                          height: optionHeight,
+                                                          child: ClipRRect(
+                                                            borderRadius:
+                                                                const BorderRadius
+                                                                    .only(
+                                                              topRight: Radius
+                                                                  .circular(16),
+                                                              bottomRight:
+                                                                  Radius
+                                                                      .circular(
+                                                                          16),
+                                                            ),
+                                                            child: SvgPicture
+                                                                .asset(
+                                                              'assets/images/Thickness_open_active.svg',
+                                                              fit: BoxFit.fill,
+                                                            ),
                                                           ),
                                                         ),
-                                                      ),
-                                                    )
-                                                  : _buildLayoutImageViewerToolButton(
-                                                      iconAssetPath:
-                                                          'assets/images/Color.svg',
-                                                      onTap: () {
-                                                        final shouldClose =
-                                                            _isLayoutColorPickerVisible;
-                                                        _setLayoutColorPickerVisible(
-                                                          !shouldClose,
-                                                        );
-                                                      },
-                                                      width: optionWidth,
-                                                      height: optionHeight,
-                                                    ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: optionGap),
-                                  Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      SizedBox(
-                                        width: optionWidth,
-                                        height: optionHeight,
-                                        child: Stack(
-                                          clipBehavior: Clip.none,
-                                          children: [
-                                            Positioned(
-                                              right: 0,
-                                              top: 0,
-                                              child: (_isLayoutThicknessPickerVisible &&
-                                                      _isLayoutThicknessPickerForEraser)
-                                                  ? GestureDetector(
-                                                      onTap: () {
-                                                        _activateLayoutEraserMode();
-                                                        final shouldClose =
-                                                            _isLayoutThicknessPickerVisible &&
-                                                                _isLayoutThicknessPickerForEraser;
-                                                        _setLayoutThicknessPickerVisible(
-                                                          !shouldClose,
-                                                          forEraser: true,
-                                                        );
-                                                      },
-                                                      behavior: HitTestBehavior
-                                                          .opaque,
-                                                      child: SizedBox(
-                                                        width:
-                                                            thicknessIconExpandedWidth,
+                                                      )
+                                                    : _buildLayoutImageViewerToolButton(
+                                                        iconAssetPath:
+                                                            'assets/images/Thickness.svg',
+                                                        onTap: () {
+                                                          final shouldClose =
+                                                              _isLayoutThicknessPickerVisible &&
+                                                                  !_isLayoutThicknessPickerForEraser;
+                                                          _setLayoutThicknessPickerVisible(
+                                                            !shouldClose,
+                                                          );
+                                                        },
+                                                        width: optionWidth,
                                                         height: optionHeight,
-                                                        child: ClipRRect(
-                                                          borderRadius:
-                                                              const BorderRadius
-                                                                  .only(
-                                                            topRight:
-                                                                Radius.circular(
-                                                                    16),
-                                                            bottomRight:
-                                                                Radius.circular(
-                                                                    16),
-                                                          ),
-                                                          child:
-                                                              SvgPicture.asset(
-                                                            'assets/images/Eraser_open_active.svg',
-                                                            fit: BoxFit.fill,
+                                                      ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: optionGap),
+                                    Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        SizedBox(
+                                          width: optionWidth,
+                                          height: optionHeight,
+                                          child: Stack(
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              Positioned(
+                                                right: 0,
+                                                top: 0,
+                                                child: _isLayoutColorPickerVisible
+                                                    ? GestureDetector(
+                                                        onTap: () {
+                                                          final shouldClose =
+                                                              _isLayoutColorPickerVisible;
+                                                          _setLayoutColorPickerVisible(
+                                                            !shouldClose,
+                                                          );
+                                                        },
+                                                        behavior:
+                                                            HitTestBehavior
+                                                                .opaque,
+                                                        child: SizedBox(
+                                                          width:
+                                                              thicknessIconExpandedWidth,
+                                                          height: optionHeight,
+                                                          child: ClipRRect(
+                                                            borderRadius:
+                                                                const BorderRadius
+                                                                    .only(
+                                                              topRight: Radius
+                                                                  .circular(16),
+                                                              bottomRight:
+                                                                  Radius
+                                                                      .circular(
+                                                                          16),
+                                                            ),
+                                                            child: SvgPicture
+                                                                .asset(
+                                                              'assets/images/Color_open_active.svg',
+                                                              fit: BoxFit.fill,
+                                                            ),
                                                           ),
                                                         ),
+                                                      )
+                                                    : _buildLayoutImageViewerToolButton(
+                                                        iconAssetPath:
+                                                            'assets/images/Color.svg',
+                                                        onTap: () {
+                                                          final shouldClose =
+                                                              _isLayoutColorPickerVisible;
+                                                          _setLayoutColorPickerVisible(
+                                                            !shouldClose,
+                                                          );
+                                                        },
+                                                        width: optionWidth,
+                                                        height: optionHeight,
                                                       ),
-                                                    )
-                                                  : _buildLayoutImageViewerToolButton(
-                                                      iconAssetPath:
-                                                          'assets/images/Eraser.svg',
-                                                      onTap: () {
-                                                        _activateLayoutEraserMode();
-                                                        final shouldClose =
-                                                            _isLayoutThicknessPickerVisible &&
-                                                                _isLayoutThicknessPickerForEraser;
-                                                        _setLayoutThicknessPickerVisible(
-                                                          !shouldClose,
-                                                          forEraser: true,
-                                                        );
-                                                      },
-                                                      width: optionWidth,
-                                                      height: optionHeight,
-                                                    ),
-                                            ),
-                                          ],
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: optionGap),
-                                  _buildLayoutImageViewerToolButton(
-                                    iconAssetPath: 'assets/images/Zoom in.svg',
-                                    onTap: () {
-                                      _closeLayoutToolPickers();
-                                      _zoomLayoutImageViewerByStep(0.1);
-                                    },
-                                    width: optionWidth,
-                                    height: optionHeight,
-                                  ),
-                                  const SizedBox(height: optionGap),
-                                  _buildLayoutImageViewerToolButton(
-                                    iconAssetPath: 'assets/images/Zoom out.svg',
-                                    onTap: () {
-                                      _closeLayoutToolPickers();
-                                      _zoomLayoutImageViewerByStep(-0.1);
-                                    },
-                                    width: optionWidth,
-                                    height: optionHeight,
-                                  ),
-                                  const SizedBox(height: optionGap),
-                                  _buildLayoutImageViewerToolButton(
-                                    iconAssetPath: _isLayoutPanModeActive
-                                        ? 'assets/images/Pan_active.svg'
-                                        : 'assets/images/Pan.svg',
-                                    onTap: () {
-                                      _closeLayoutToolPickers();
-                                      _activateLayoutPanMode();
-                                    },
-                                    width: optionWidth,
-                                    height: optionHeight,
-                                  ),
-                                  const SizedBox(height: optionGap),
-                                  _buildLayoutImageViewerToolButton(
-                                    iconAssetPath:
-                                        'assets/images/Delete_image.svg',
-                                    onTap: _closeLayoutImageViewer,
-                                    width: optionWidth,
-                                    height: optionHeight,
-                                  ),
-                                ],
-                              ),
-                            ],
+                                      ],
+                                    ),
+                                    SizedBox(height: optionGap),
+                                    Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        SizedBox(
+                                          width: optionWidth,
+                                          height: optionHeight,
+                                          child: Stack(
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              Positioned(
+                                                right: 0,
+                                                top: 0,
+                                                child: (_isLayoutThicknessPickerVisible &&
+                                                        _isLayoutThicknessPickerForEraser)
+                                                    ? GestureDetector(
+                                                        onTap: () {
+                                                          _activateLayoutEraserMode();
+                                                          final shouldClose =
+                                                              _isLayoutThicknessPickerVisible &&
+                                                                  _isLayoutThicknessPickerForEraser;
+                                                          _setLayoutThicknessPickerVisible(
+                                                            !shouldClose,
+                                                            forEraser: true,
+                                                          );
+                                                        },
+                                                        behavior:
+                                                            HitTestBehavior
+                                                                .opaque,
+                                                        child: SizedBox(
+                                                          width:
+                                                              thicknessIconExpandedWidth,
+                                                          height: optionHeight,
+                                                          child: ClipRRect(
+                                                            borderRadius:
+                                                                const BorderRadius
+                                                                    .only(
+                                                              topRight: Radius
+                                                                  .circular(16),
+                                                              bottomRight:
+                                                                  Radius
+                                                                      .circular(
+                                                                          16),
+                                                            ),
+                                                            child: SvgPicture
+                                                                .asset(
+                                                              'assets/images/Eraser_open_active.svg',
+                                                              fit: BoxFit.fill,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      )
+                                                    : _buildLayoutImageViewerToolButton(
+                                                        iconAssetPath:
+                                                            'assets/images/Eraser.svg',
+                                                        onTap: () {
+                                                          _activateLayoutEraserMode();
+                                                          final shouldClose =
+                                                              _isLayoutThicknessPickerVisible &&
+                                                                  _isLayoutThicknessPickerForEraser;
+                                                          _setLayoutThicknessPickerVisible(
+                                                            !shouldClose,
+                                                            forEraser: true,
+                                                          );
+                                                        },
+                                                        width: optionWidth,
+                                                        height: optionHeight,
+                                                      ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: optionGap),
+                                    _buildLayoutImageViewerToolButton(
+                                      iconAssetPath:
+                                          'assets/images/Zoom in.svg',
+                                      onTap: () {
+                                        _closeLayoutToolPickers();
+                                        _zoomLayoutImageViewerByStep(0.1);
+                                      },
+                                      width: optionWidth,
+                                      height: optionHeight,
+                                    ),
+                                    SizedBox(height: optionGap),
+                                    _buildLayoutImageViewerToolButton(
+                                      iconAssetPath:
+                                          'assets/images/Zoom out.svg',
+                                      onTap: () {
+                                        _closeLayoutToolPickers();
+                                        _zoomLayoutImageViewerByStep(-0.1);
+                                      },
+                                      width: optionWidth,
+                                      height: optionHeight,
+                                    ),
+                                    SizedBox(height: optionGap),
+                                    _buildLayoutImageViewerToolButton(
+                                      iconAssetPath: _isLayoutPanModeActive
+                                          ? 'assets/images/Pan_active.svg'
+                                          : 'assets/images/Pan.svg',
+                                      onTap: () {
+                                        _closeLayoutToolPickers();
+                                        _activateLayoutPanMode();
+                                      },
+                                      width: optionWidth,
+                                      height: optionHeight,
+                                    ),
+                                    SizedBox(height: optionGap),
+                                    _buildLayoutImageViewerToolButton(
+                                      iconAssetPath:
+                                          'assets/images/Delete_image.svg',
+                                      onTap: () {
+                                        _closeLayoutToolPickers();
+                                        unawaited(_deleteActiveLayoutImage());
+                                      },
+                                      width: optionWidth,
+                                      height: optionHeight,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          Positioned(
+                            top: toolTop(0) - closeIconGapToPen - closeIconSize,
+                            right: closeIconRightInset,
+                            child: _buildLayoutImageViewerToolButton(
+                              iconAssetPath: 'assets/images/Layout_close.svg',
+                              onTap: _closeLayoutImageViewer,
+                              width: closeIconSize,
+                              height: closeIconSize,
+                            ),
                           ),
                           if (_isLayoutThicknessPickerVisible &&
                               !_isLayoutThicknessPickerForEraser)
@@ -2110,7 +2396,8 @@ class _DocumentsPageState extends State<DocumentsPage> {
                             ),
                           Positioned(
                             right: railGapFromImage + optionWidth,
-                            top: imageTopInset +
+                            top: closeTopInset +
+                                imageTopInset +
                                 imageBoxHeight +
                                 bottomActionTopGap,
                             child: Row(
@@ -2120,15 +2407,15 @@ class _DocumentsPageState extends State<DocumentsPage> {
                                   iconAssetPath:
                                       'assets/images/Download_doc.svg',
                                   onTap: _downloadActiveLayoutImage,
-                                  width: bottomActionIconSize,
-                                  height: bottomActionIconSize,
+                                  width: bottomActionIconWidth,
+                                  height: bottomActionIconHeight,
                                 ),
-                                const SizedBox(width: bottomActionIconGap),
+                                SizedBox(width: bottomActionIconGap),
                                 _buildLayoutImageViewerToolButton(
                                   iconAssetPath: 'assets/images/Print doc.svg',
                                   onTap: _printActiveLayoutImage,
-                                  width: bottomActionIconSize,
-                                  height: bottomActionIconSize,
+                                  width: bottomActionIconWidth,
+                                  height: bottomActionIconHeight,
                                 ),
                               ],
                             ),
@@ -3449,7 +3736,6 @@ class _DocumentsPageState extends State<DocumentsPage> {
             uploads: _completedUploads,
             onClose: _closeUploadedPopup,
           ),
-        if (_isLayoutImageViewerOpen) _buildLayoutImageViewerOverlay(),
       ],
     );
   }
